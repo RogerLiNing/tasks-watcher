@@ -1,0 +1,68 @@
+project_name: tasks-watcher
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: server
+    main: ./cmd/server
+    binary: tasks-watcher-server
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+  - id: cli
+    main: ./cmd/cli
+    binary: tasks-watcher
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+  - id: mcp
+    main: ./cmd/mcp
+    binary: tasks-watcher-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    replacements:
+      darwin: mac
+      windows: windows
+      amd64: x86_64
+      arm64: arm64
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  skip: true
