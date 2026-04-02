@@ -1,0 +1,35 @@
+{
+  "name": "tasks-watcher",
+  "version": "1.0.0",
+  "description": "Task management CLI for humans and AI agents — track tasks across Claude Code, Cursor, and manual entry",
+  "author": {
+    "name": "Roger Lee",
+    "email": "rogerlee0421@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tasks",
+    "task-management",
+    "productivity",
+    "ai-agent",
+    "claude-code",
+    "cursor"
+  ],
+  "bin": {
+    "tasks-watcher": "./bin/tasks-watcher"
+  },
+  "files": [
+    "bin/",
+    "install.sh"
+  ],
+  "scripts": {
+    "postinstall": "./install.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RogerLiNing/tasks-watcher"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

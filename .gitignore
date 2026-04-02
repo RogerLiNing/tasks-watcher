@@ -1,0 +1,50 @@
+# Binaries
+/tasks-watcher
+/tasks-watcher-server
+/tasks-watcher-cli
+/tasks-watcher-mcp
+/.tasks-watcher/bin/
+/cmd/server/server
+cmd/cli/cli
+cmd/mcp/mcp
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+
+# Web
+web/node_modules/
+web/dist/
+web/.svelte-kit/
+web/.vite/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local config
+.env
+.env.local
+
+# DB
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+nohup.out
+
+# Temp
+*.tmp
+*.temp

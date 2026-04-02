@@ -1,0 +1,73 @@
+{
+  "app": {
+    "title": "任务监控",
+    "loading": "正在加载任务监控...",
+    "connectTitle": "任务监控",
+    "connectHint": "运行 <code>tasks-watcher-server</code> 启动服务获取 API key，也可查看 <code>~/.tasks-watcher/api.key</code>",
+    "apiKeyPlaceholder": "在此粘贴 API key",
+    "connectBtn": "连接"
+  },
+  "columns": {
+    "pending": "待处理",
+    "in_progress": "进行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "sources": {
+    "all": "全部来源",
+    "claude-code": "Claude Code",
+    "cursor": "Cursor",
+    "manual": "手动创建"
+  },
+  "sidebar": {
+    "projects": "项目",
+    "allTasks": "全部任务",
+    "addProject": "添加",
+    "projectNamePlaceholder": "项目名称...",
+    "add": "添加",
+    "projectDescPlaceholder": "项目描述（技术栈、目标等）...",
+    "editDesc": "编辑描述",
+    "save": "保存",
+    "description": "描述"
+  },
+  "quickCreate": {
+    "placeholder": "添加任务... (按回车)",
+    "projectSelect": "项目...",
+    "low": "低",
+    "med": "中",
+    "high": "高",
+    "urgent": "紧急"
+  },
+  "kanban": {
+    "dropHere": "拖拽任务到此处"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部已读",
+    "empty": "暂无通知"
+  },
+  "taskModal": {
+    "delete": "删除",
+    "edit": "编辑",
+    "save": "保存",
+    "cancel": "取消",
+    "taskTitle": "任务标题",
+    "description": "描述...",
+    "priority": "优先级",
+    "project": "项目",
+    "assignee": "负责人",
+    "created": "创建于",
+    "completed": "完成于",
+    "error": "错误"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{n}分钟前",
+    "hoursAgo": "{n}小时前"
+  },
+  "sse": {
+    "connected": "实时连接正常",
+    "disconnected": "实时连接断开"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "app": {
+    "title": "Tasks Watcher",
+    "loading": "Loading Tasks Watcher...",
+    "connectTitle": "Tasks Watcher",
+    "connectHint": "Start the server with <code>tasks-watcher-server</code> to get your API key. It's also saved at <code>~/.tasks-watcher/api.key</code>",
+    "apiKeyPlaceholder": "Paste your API key here",
+    "connectBtn": "Connect"
+  },
+  "columns": {
+    "pending": "Pending",
+    "in_progress": "In Progress",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "sources": {
+    "all": "All Sources",
+    "claude-code": "Claude Code",
+    "cursor": "Cursor",
+    "manual": "Manual"
+  },
+  "sidebar": {
+    "projects": "Projects",
+    "allTasks": "All Tasks",
+    "addProject": "Add",
+    "projectNamePlaceholder": "Project name...",
+    "add": "Add",
+    "projectDescPlaceholder": "Description (tech stack, goals, etc.)...",
+    "editDesc": "Edit description",
+    "save": "Save",
+    "description": "Description"
+  },
+  "quickCreate": {
+    "placeholder": "Add a task... (press Enter)",
+    "projectSelect": "Project...",
+    "low": "Low",
+    "med": "Med",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "kanban": {
+    "dropHere": "Drop tasks here"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No notifications yet"
+  },
+  "taskModal": {
+    "delete": "Delete",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "taskTitle": "Task title",
+    "description": "Description...",
+    "priority": "Priority",
+    "project": "Project",
+    "assignee": "Assignee",
+    "source": "Source",
+    "created": "Created",
+    "completed": "Completed",
+    "error": "Error"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{n}m ago",
+    "hoursAgo": "{n}h ago"
+  },
+  "sse": {
+    "connected": "Real-time connected",
+    "disconnected": "Real-time disconnected"
+  }
+}
