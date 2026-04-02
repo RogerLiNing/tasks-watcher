@@ -36,8 +36,8 @@ func TaskCommand() *cobra.Command {
 		taskShowCmd(),
 		taskDeleteCmd(),
 		taskHeartbeatCmd(),
-		DependencyCommand(),
-		SubtaskCommand(),
+		TaskDepCommand(),
+		TaskSubtaskCommand(),
 	)
 
 	return taskCmd

@@ -7,32 +7,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func SubtaskCommand() *cobra.Command {
-	stCmd := &cobra.Command{
+// TaskSubtaskCommand exposes subtask operations as `task subtask <subcmd>`.
+func TaskSubtaskCommand() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "subtask",
 		Short: "Manage task subtasks",
 		Long:  "Create, link, and list subtasks. A parent task auto-completes when all children complete.",
-		Example: `  tasks-watcher task subtask <parent-id> -t "Design UI"
-  tasks-watcher task subtask <parent-id> --add <child-id>
-  tasks-watcher task subtask <parent-id> --list
-  tasks-watcher task subtask <parent-id> --remove <child-id>`,
 	}
-	stCmd.AddCommand(
-		subtaskCreateCmd(),
-		subtaskLinkCmd(),
-		subtaskListCmd(),
-		subtaskRemoveCmd(),
+	cmd.AddCommand(
+		taskSubtaskCreateCmd(),
+		taskSubtaskLinkCmd(),
+		taskSubtaskListCmd(),
+		taskSubtaskRemoveCmd(),
 	)
-	return stCmd
+	return cmd
 }
 
-func subtaskCreateCmd() *cobra.Command {
-	var title, description, priority, assignee string
-	cmd := &cobra.Command{
-		Use:   "create <parent-id> -t <title>",
-		Short: "Create a subtask under a parent",
-		Args:  cobra.ExactArgs(1),
+func taskSubtaskCreateCmd() *cobra.Command {
+	var taskID, title, description, priority, assignee string
+	c := &cobra.Command{
+		Use:   "create --task-id <id> -t <title>",
+		Short: "Create a subtask under a parent task",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			if title == "" {
 				return fmt.Errorf("-t <title> is required")
 			}
@@ -46,7 +45,7 @@ func subtaskCreateCmd() *cobra.Command {
 			if assignee != "" {
 				body["assignee"] = assignee
 			}
-			resp, err := apiRequest("POST", "/api/tasks/"+args[0]+"/subtasks", body)
+			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/subtasks", body)
 			if err != nil {
 				return err
 			}
@@ -60,25 +59,29 @@ func subtaskCreateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&title, "title", "t", "", "Subtask title (required)")
-	cmd.Flags().StringVarP(&description, "description", "d", "", "Subtask description")
-	cmd.Flags().StringVarP(&priority, "priority", "P", "", "Priority: low, medium, high, urgent")
-	cmd.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
-	cmd.MarkFlagRequired("title")
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
+	c.Flags().StringVarP(&title, "title", "t", "", "Subtask title (required)")
+	c.Flags().StringVarP(&description, "description", "d", "", "Subtask description")
+	c.Flags().StringVarP(&priority, "priority", "P", "", "Priority: low, medium, high, urgent")
+	c.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("title")
+	return c
 }
 
-func subtaskLinkCmd() *cobra.Command {
-	var childID string
-	cmd := &cobra.Command{
-		Use:   "link <parent-id> --add <child-id>",
+func taskSubtaskLinkCmd() *cobra.Command {
+	var taskID, childID string
+	c := &cobra.Command{
+		Use:   "link --task-id <id> --add <child-id>",
 		Short: "Link an existing task as a subtask",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			if childID == "" {
 				return fmt.Errorf("--add <child-id> is required")
 			}
-			resp, err := apiRequest("POST", "/api/tasks/"+args[0]+"/subtasks", map[string]string{"child_id": childID})
+			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/subtasks", map[string]string{"child_id": childID})
 			if err != nil {
 				return err
 			}
@@ -87,24 +90,27 @@ func subtaskLinkCmd() *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 			if task, ok := result["task"].(map[string]interface{}); ok {
-				fmt.Printf("✓ Linked subtask %s under %s\n", task["title"], args[0])
+				fmt.Printf("✓ Linked subtask %s under %s\n", task["title"], taskID)
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&childID, "add", "", "", "Existing task ID to link as subtask")
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
+	c.Flags().StringVar(&childID, "add", "", "Existing task ID to link as subtask")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("add")
+	return c
 }
 
-func subtaskListCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list <parent-id>",
+func taskSubtaskListCmd() *cobra.Command {
+	var taskID string
+	c := &cobra.Command{
+		Use:   "list --task-id <id>",
 		Short: "List subtasks of a task",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			taskID := args[0]
-
-			// List subtasks
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			resp, err := apiRequest("GET", "/api/tasks/"+taskID+"/subtasks", nil)
 			if err != nil {
 				return err
@@ -115,7 +121,6 @@ func subtaskListCmd() *cobra.Command {
 			}
 			subtasks := result["subtasks"]
 
-			// Get parent info
 			parentResp, _ := apiRequest("GET", "/api/tasks/"+taskID, nil)
 			var parent map[string]interface{}
 			json.Unmarshal(parentResp, &parent)
@@ -132,27 +137,34 @@ func subtaskListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
+	c.MarkFlagRequired("task-id")
+	return c
 }
 
-func subtaskRemoveCmd() *cobra.Command {
-	var childID string
-	cmd := &cobra.Command{
-		Use:   "remove <parent-id> --remove <child-id>",
+func taskSubtaskRemoveCmd() *cobra.Command {
+	var taskID, childID string
+	c := &cobra.Command{
+		Use:   "remove --task-id <id> --remove <child-id>",
 		Short: "Remove a subtask from its parent",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			if childID == "" {
 				return fmt.Errorf("--remove <child-id> is required")
 			}
-			_, err := apiRequest("DELETE", "/api/tasks/"+args[0]+"/subtasks/"+childID, nil)
+			_, err := apiRequest("DELETE", "/api/tasks/"+taskID+"/subtasks/"+childID, nil)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("✓ Removed subtask %s from %s\n", childID, args[0])
+			fmt.Printf("✓ Removed subtask %s from %s\n", childID, taskID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&childID, "remove", "r", "", "Subtask ID to remove")
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
+	c.Flags().StringVarP(&childID, "remove", "r", "", "Subtask ID to remove")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("remove")
+	return c
 }

@@ -7,36 +7,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func DependencyCommand() *cobra.Command {
-	depCmd := &cobra.Command{
-		Use:   "depend",
+// TaskDepCommand exposes dependency operations as `task dep <subcmd>`.
+func TaskDepCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dep",
 		Short: "Manage task dependencies",
 		Long:  "Add, remove, and list task blockers. A task cannot start until all its blockers are completed.",
-		Example: `  tasks-watcher task depend <task-id> --on <blocker-id>
-  tasks-watcher task depend <task-id> --list
-  tasks-watcher task depend <task-id> --remove <blocker-id>
-  tasks-watcher task depend <task-id> --can-start`,
 	}
-	depCmd.AddCommand(
-		dependAddCmd(),
-		dependRemoveCmd(),
-		dependListCmd(),
-		dependCheckCmd(),
+	cmd.AddCommand(
+		taskDepAddCmd(),
+		taskDepRemoveCmd(),
+		taskDepListCmd(),
+		taskDepCheckCmd(),
 	)
-	return depCmd
+	return cmd
 }
 
-func dependAddCmd() *cobra.Command {
-	var blockerID string
-	cmd := &cobra.Command{
-		Use:   "add <task-id> --on <blocker-id>",
+func taskDepAddCmd() *cobra.Command {
+	var taskID, blockerID string
+	c := &cobra.Command{
+		Use:   "add --task-id <id> --on <blocker-id>",
 		Short: "Add a blocker to a task",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			if blockerID == "" {
 				return fmt.Errorf("--on <blocker-id> is required")
 			}
-			resp, err := apiRequest("POST", "/api/tasks/"+args[0]+"/dependencies", map[string]string{"blocker_id": blockerID})
+			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/dependencies", map[string]string{"blocker_id": blockerID})
 			if err != nil {
 				return err
 			}
@@ -44,45 +43,53 @@ func dependAddCmd() *cobra.Command {
 			if err := json.Unmarshal(resp, &dep); err != nil {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
-			fmt.Printf("✓ Added blocker %s → %s\n", dep["blocker_id"], args[0])
+			fmt.Printf("✓ Added blocker %s → %s\n", dep["blocker_id"], taskID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&blockerID, "on", "", "", "Blocker task ID (required)")
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Task ID (required)")
+	c.Flags().StringVar(&blockerID, "on", "", "Blocker task ID (required)")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("on")
+	return c
 }
 
-func dependRemoveCmd() *cobra.Command {
-	var blockerID string
-	cmd := &cobra.Command{
-		Use:   "remove <task-id> --remove <blocker-id>",
+func taskDepRemoveCmd() *cobra.Command {
+	var taskID, blockerID string
+	c := &cobra.Command{
+		Use:   "remove --task-id <id> --remove <blocker-id>",
 		Short: "Remove a blocker from a task",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			if blockerID == "" {
 				return fmt.Errorf("--remove <blocker-id> is required")
 			}
-			_, err := apiRequest("DELETE", "/api/tasks/"+args[0]+"/dependencies/"+blockerID, nil)
+			_, err := apiRequest("DELETE", "/api/tasks/"+taskID+"/dependencies/"+blockerID, nil)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("✓ Removed blocker %s from %s\n", blockerID, args[0])
+			fmt.Printf("✓ Removed blocker %s from %s\n", blockerID, taskID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&blockerID, "remove", "r", "", "Blocker task ID to remove")
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Task ID (required)")
+	c.Flags().StringVarP(&blockerID, "remove", "r", "", "Blocker task ID to remove")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("remove")
+	return c
 }
 
-func dependListCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list <task-id>",
+func taskDepListCmd() *cobra.Command {
+	var taskID string
+	c := &cobra.Command{
+		Use:   "list --task-id <id>",
 		Short: "List blockers and dependents of a task",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			taskID := args[0]
-
-			// List blockers
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
 			resp, err := apiRequest("GET", "/api/tasks/"+taskID+"/dependencies", nil)
 			if err != nil {
 				return err
@@ -93,7 +100,6 @@ func dependListCmd() *cobra.Command {
 			}
 			blockers := blockResult["blockers"]
 
-			// List dependents
 			respDep, err := apiRequest("GET", "/api/tasks/"+taskID+"/dependents", nil)
 			if err != nil {
 				return err
@@ -122,16 +128,21 @@ func dependListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Task ID (required)")
+	c.MarkFlagRequired("task-id")
+	return c
 }
 
-func dependCheckCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "can-start <task-id>",
+func taskDepCheckCmd() *cobra.Command {
+	var taskID string
+	c := &cobra.Command{
+		Use:   "can-start --task-id <id>",
 		Short: "Check if a task can be started",
-		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := apiRequest("GET", "/api/tasks/"+args[0]+"/can-start", nil)
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
+			resp, err := apiRequest("GET", "/api/tasks/"+taskID+"/can-start", nil)
 			if err != nil {
 				return err
 			}
@@ -141,9 +152,9 @@ func dependCheckCmd() *cobra.Command {
 			}
 			canStart, _ := result["can_start"].(bool)
 			if canStart {
-				fmt.Printf("✓ Task %s can start\n", args[0])
+				fmt.Printf("✓ Task %s can start\n", taskID)
 			} else {
-				fmt.Printf("✗ Task %s is blocked:\n", args[0])
+				fmt.Printf("✗ Task %s is blocked:\n", taskID)
 				if blockers, ok := result["blockers"].([]interface{}); ok && len(blockers) > 0 {
 					fmt.Println("  Blocked by incomplete tasks:")
 					for _, b := range blockers {
@@ -160,5 +171,7 @@ func dependCheckCmd() *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
+	c.Flags().StringVar(&taskID, "task-id", "", "Task ID (required)")
+	c.MarkFlagRequired("task-id")
+	return c
 }
