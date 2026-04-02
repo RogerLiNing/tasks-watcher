@@ -206,6 +206,27 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Block transition to in_progress if task has incomplete blockers
+	if to == models.TaskStatusInProgress {
+		result, err := h.db.CanStartTask(id)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		if !result.CanStart {
+			resp := map[string]interface{}{
+				"error":       "task is blocked",
+				"can_start":    false,
+				"blockers":     result.Blockers,
+				"child_titles": result.ChildTitles,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
 	// Update status
 	now := models.Now()
 	completedAt := int64(0)
@@ -225,6 +246,9 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Propagate status to parent if this is a subtask and the new status is relevant
+	h.propagateToParent(t)
+
 	// Determine event type
 	eventType := fmt.Sprintf("task.%s", to)
 
@@ -232,6 +256,45 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	BroadcastTaskEvent(h.sse, eventType, t)
 
 	json.NewEncoder(w).Encode(t)
+}
+
+// propagateToParent updates the parent task's status based on child statuses.
+// If any child becomes in_progress, parent auto-starts if pending.
+// If all children reach terminal state, parent auto-completes.
+func (h *TaskHandler) propagateToParent(child *models.Task) {
+	parentID, err := h.db.GetParentID(child.ID)
+	if err != nil || parentID == "" {
+		return
+	}
+
+	parent, err := h.db.GetTask(parentID)
+	if err != nil || parent == nil {
+		return
+	}
+
+	// Get all child statuses
+	childStatuses, err := h.db.GetChildStatuses(parentID)
+	if err != nil {
+		return
+	}
+
+	newStatus := db.ComputeParentStatus(childStatuses)
+	if newStatus == parent.Status {
+		return // No change needed
+	}
+
+	// Only auto-propagate if parent is not already in a terminal state
+	// (allow parent to be manually advanced, or let manual changes override)
+	if err := h.db.UpdateTaskStatus(parentID, newStatus, ""); err != nil {
+		return
+	}
+
+	// Broadcast parent status change
+	BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
+		"parent":     parent,
+		"child_id":   child.ID,
+		"child_status": child.Status,
+	})
 }
 
 func (h *TaskHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {

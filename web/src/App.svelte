@@ -21,6 +21,9 @@
   let loading = true;
   let authError = false;
   let showSettings = false;
+  let toastMessage = '';
+  let toastVisible = false;
+  let toastTimer;
 
   async function loadData() {
     try {
@@ -100,6 +103,29 @@
         case 'task.deleted':
           removeTaskFromStore(event.payload.id);
           break;
+        case 'task.dependency.added':
+        case 'task.dependency.removed':
+        case 'task.subtask.added':
+        case 'task.subtask.removed':
+          // Refresh the affected task if it's the selected one
+          if (selectedTask && event.payload && (event.payload.task_id || event.payload.parent_id)) {
+            const taskId = event.payload.task_id || event.payload.parent_id;
+            if (selectedTask.id === taskId) {
+              api.getTask(taskId).then(updated => {
+                if (updated) {
+                  updateTaskInStore(updated);
+                  selectedTask = updated;
+                }
+              }).catch(() => {});
+            }
+          }
+          break;
+        case 'task.subtask.status_changed':
+          updateTaskInStore(event.payload.parent);
+          if (selectedTask && selectedTask.id === event.payload.parent.id) {
+            selectedTask = event.payload.parent;
+          }
+          break;
         case 'project.created':
           addProjectToStore(event.payload);
           break;
@@ -144,8 +170,26 @@
         selectedTask = updated;
       }
     } catch (e) {
-      console.error('Failed to update status', e);
+      let msg = 'Failed to update status';
+      try {
+        const errData = JSON.parse(e.message);
+        if (errData.error === 'task is blocked') {
+          msg = 'Task is blocked';
+          if (errData.blockers?.length) msg += ': ' + errData.blockers.join(', ');
+          else if (errData.child_titles?.length) msg += ' (has non-terminal subtasks): ' + errData.child_titles.join(', ');
+        } else {
+          msg = errData.error || msg;
+        }
+      } catch (_) {}
+      showToast(msg);
     }
+  }
+
+  function showToast(msg) {
+    clearTimeout(toastTimer);
+    toastMessage = msg;
+    toastVisible = true;
+    toastTimer = setTimeout(() => { toastVisible = false; }, 4000);
   }
 
   async function handleTaskCreate(task) {
@@ -248,6 +292,11 @@
       on:update={(e) => handleTaskUpdate(e.detail)}
       on:statusChange={(e) => handleStatusChange(e.detail.id, e.detail.status, e.detail.reason)}
       on:delete={(e) => handleTaskDelete(e.detail)}
+      on:openTask={async (e) => {
+        const taskId = typeof e.detail === 'string' ? e.detail : e.detail.id;
+        const t = await api.getTask(taskId);
+        if (t) openTask(t);
+      }}
     />
   {/if}
 
@@ -265,6 +314,10 @@
 
   {#if showSettings}
     <NotificationSettings onClose={() => showSettings = false} />
+  {/if}
+
+  {#if toastVisible}
+    <div class="toast">{toastMessage}</div>
   {/if}
 {/if}
 
@@ -432,4 +485,24 @@
   .main-layout { display: flex; flex: 1; overflow: hidden; }
 
   .content { flex: 1; overflow: auto; padding: 1.5rem; }
+
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1d1d1f;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    animation: toastIn 0.2s ease;
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
 </style>

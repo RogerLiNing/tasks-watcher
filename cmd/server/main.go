@@ -59,6 +59,8 @@ func main() {
 	notifConfigHandler := api.NewNotificationConfigHandler(database)
 	agentHandler := api.NewAgentHandler(database)
 	webhookHandler := api.NewWebhookHandler(database)
+	depHandler := api.NewDepHandler(database, sse)
+	subtaskHandler := api.NewSubtaskHandler(database, sse)
 
 	// Register on subrouter — handlers use paths WITHOUT /api prefix (subrouter handles it)
 	projectHandler.Register(apiRouter)
@@ -67,6 +69,8 @@ func main() {
 	notifConfigHandler.Register(apiRouter)
 	agentHandler.Register(apiRouter)
 	webhookHandler.Register(apiRouter)
+	depHandler.Register(apiRouter)
+	subtaskHandler.Register(apiRouter)
 
 	// Config endpoint
 	apiRouter.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {

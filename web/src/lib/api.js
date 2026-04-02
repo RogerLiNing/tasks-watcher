@@ -57,6 +57,19 @@ export const api = {
   deleteTask: (id) => request('DELETE', `/tasks/${id}`),
   heartbeat: (id) => request('POST', `/tasks/${id}/heartbeat`),
 
+  // Dependencies
+  getBlockers: (taskId) => request('GET', `/tasks/${taskId}/dependencies`),
+  addBlocker: (taskId, blockerId) => request('POST', `/tasks/${taskId}/dependencies`, { blocker_id: blockerId }),
+  removeBlocker: (taskId, blockerId) => request('DELETE', `/tasks/${taskId}/dependencies/${blockerId}`),
+  getDependents: (taskId) => request('GET', `/tasks/${taskId}/dependents`),
+  canStart: (taskId) => request('GET', `/tasks/${taskId}/can-start`),
+
+  // Subtasks
+  getSubtasks: (parentId) => request('GET', `/tasks/${parentId}/subtasks`),
+  createSubtask: (parentId, data) => request('POST', `/tasks/${parentId}/subtasks`, data),
+  removeSubtask: (parentId, childId) => request('DELETE', `/tasks/${parentId}/subtasks/${childId}`),
+  getParent: (taskId) => request('GET', `/tasks/${taskId}/parent`),
+
   // Notifications
   listNotifications: () => request('GET', '/notifications'),
   markAllRead: () => request('POST', '/notifications/read'),

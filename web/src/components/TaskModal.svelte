@@ -1,6 +1,8 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { t, locale } from '../lib/i18n/index.js';
+  import DependencyPanel from './DependencyPanel.svelte';
+  import SubtaskPanel from './SubtaskPanel.svelte';
 
   export let task;
   export let projects = [];
@@ -11,6 +13,13 @@
   let editDesc = task.description || '';
   let editPriority = task.priority;
   let editProjectId = task.project_id;
+  let activeTab = 'details';
+
+  const tabs = [
+    { key: 'details', label: 'Details' },
+    { key: 'dependencies', label: 'Dependencies' },
+    { key: 'subtasks', label: 'Subtasks' },
+  ];
 
   $: statuses = [
     { key: 'pending', color: '#86868b' },
@@ -40,6 +49,11 @@
     if (!ts) return '—';
     return new Date(ts * 1000).toLocaleString();
   }
+
+  function openTaskInModal(taskId) {
+    // Close current modal and dispatch openTask for the new task
+    dispatch('openTask', taskId);
+  }
 </script>
 
 <div class="modal-backdrop" on:click={() => dispatch('close')} role="button" tabindex="-1" on:keydown={() => {}}>
@@ -53,77 +67,103 @@
       </div>
     </div>
 
+    <div class="tab-bar">
+      {#each tabs as tab (tab.key)}
+        <button
+          class="tab"
+          class:active={activeTab === tab.key}
+          on:click={() => activeTab = tab.key}
+        >
+          {tab.label}
+        </button>
+      {/each}
+    </div>
+
     <div class="modal-body">
-      {#if editing}
-        <input class="edit-title" bind:value={editTitle} placeholder={$t('taskModal.taskTitle')} />
-        <textarea class="edit-desc" bind:value={editDesc} placeholder={$t('taskModal.description')} rows="4"></textarea>
-        <div class="edit-row">
-          <label>
-            {$t('taskModal.priority')}:
-            <select bind:value={editPriority}>
-              <option value="low">{$t('quickCreate.low')}</option>
-              <option value="medium">{$t('quickCreate.med')}</option>
-              <option value="high">{$t('quickCreate.high')}</option>
-              <option value="urgent">{$t('quickCreate.urgent')}</option>
-            </select>
-          </label>
-          <label>
-            {$t('taskModal.project')}:
-            <select bind:value={editProjectId}>
-              {#each projects as p (p.id)}
-                <option value={p.id}>{p.name}</option>
-              {/each}
-            </select>
-          </label>
-        </div>
-        <div class="edit-actions">
-          <button class="save-btn" on:click={saveEdit}>{$t('taskModal.save')}</button>
-          <button class="cancel-btn" on:click={() => editing = false}>{$t('taskModal.cancel')}</button>
-        </div>
-      {:else}
-        <h2 class="task-title" on:click={() => editing = true}>{task.title}</h2>
-        {#if task.description}
-          <p class="task-desc" on:click={() => editing = true}>{task.description}</p>
+      {#if activeTab === 'details'}
+        {#if editing}
+          <input class="edit-title" bind:value={editTitle} placeholder={$t('taskModal.taskTitle')} />
+          <textarea class="edit-desc" bind:value={editDesc} placeholder={$t('taskModal.description')} rows="4"></textarea>
+          <div class="edit-row">
+            <label>
+              {$t('taskModal.priority')}:
+              <select bind:value={editPriority}>
+                <option value="low">{$t('quickCreate.low')}</option>
+                <option value="medium">{$t('quickCreate.med')}</option>
+                <option value="high">{$t('quickCreate.high')}</option>
+                <option value="urgent">{$t('quickCreate.urgent')}</option>
+              </select>
+            </label>
+            <label>
+              {$t('taskModal.project')}:
+              <select bind:value={editProjectId}>
+                {#each projects as p (p.id)}
+                  <option value={p.id}>{p.name}</option>
+                {/each}
+              </select>
+            </label>
+          </div>
+          <div class="edit-actions">
+            <button class="save-btn" on:click={saveEdit}>{$t('taskModal.save')}</button>
+            <button class="cancel-btn" on:click={() => editing = false}>{$t('taskModal.cancel')}</button>
+          </div>
+        {:else}
+          <h2 class="task-title" on:click={() => editing = true}>{task.title}</h2>
+          {#if task.description}
+            <p class="task-desc" on:click={() => editing = true}>{task.description}</p>
+          {/if}
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">{$t('taskModal.priority')}</span>
+              <span class="meta-value priority-badge" data-priority={task.priority}>{task.priority}</span>
+            </div>
+            {#if task.assignee}
+              <div class="meta-item">
+                <span class="meta-label">{$t('taskModal.assignee')}</span>
+                <span class="meta-value">{task.assignee}</span>
+              </div>
+            {/if}
+            {#if task.source && task.source !== 'manual'}
+              <div class="meta-item">
+                <span class="meta-label">{$t('taskModal.source')}</span>
+                <span class="meta-value source-badge" data-source={task.source}>{$t('sources.' + task.source) || task.source}</span>
+              </div>
+            {/if}
+            <div class="meta-item">
+              <span class="meta-label">{$t('taskModal.created')}</span>
+              <span class="meta-value">{formatTime(task.created_at)}</span>
+            </div>
+            {#if task.completed_at}
+              <div class="meta-item">
+                <span class="meta-label">{$t('taskModal.completed')}</span>
+                <span class="meta-value">{formatTime(task.completed_at)}</span>
+              </div>
+            {/if}
+            {#if task.error_message}
+              <div class="meta-item error-row">
+                <span class="meta-label">{$t('taskModal.error')}</span>
+                <span class="meta-value error">{task.error_message}</span>
+              </div>
+            {/if}
+          </div>
+          <button class="edit-btn" on:click={() => editing = true}>{$t('taskModal.edit')}</button>
         {/if}
-        <div class="meta-grid">
-          <div class="meta-item">
-            <span class="meta-label">{$t('taskModal.priority')}</span>
-            <span class="meta-value priority-badge" data-priority={task.priority}>{task.priority}</span>
-          </div>
-          {#if task.assignee}
-            <div class="meta-item">
-              <span class="meta-label">{$t('taskModal.assignee')}</span>
-              <span class="meta-value">{task.assignee}</span>
-            </div>
-          {/if}
-          {#if task.source && task.source !== 'manual'}
-            <div class="meta-item">
-              <span class="meta-label">{$t('taskModal.source')}</span>
-              <span class="meta-value source-badge" data-source={task.source}>{$t('sources.' + task.source) || task.source}</span>
-            </div>
-          {/if}
-          <div class="meta-item">
-            <span class="meta-label">{$t('taskModal.created')}</span>
-            <span class="meta-value">{formatTime(task.created_at)}</span>
-          </div>
-          {#if task.completed_at}
-            <div class="meta-item">
-              <span class="meta-label">{$t('taskModal.completed')}</span>
-              <span class="meta-value">{formatTime(task.completed_at)}</span>
-            </div>
-          {/if}
-          {#if task.error_message}
-            <div class="meta-item error-row">
-              <span class="meta-label">{$t('taskModal.error')}</span>
-              <span class="meta-value error">{task.error_message}</span>
-            </div>
-          {/if}
-        </div>
-        <button class="edit-btn" on:click={() => editing = true}>{$t('taskModal.edit')}</button>
+      {:else if activeTab === 'dependencies'}
+        <DependencyPanel
+          {task}
+          on:refresh
+          on:openTask={(e) => openTaskInModal(e.detail)}
+        />
+      {:else if activeTab === 'subtasks'}
+        <SubtaskPanel
+          {task}
+          on:refresh
+          on:openTask={(e) => openTaskInModal(e.detail)}
+        />
       {/if}
     </div>
 
-    {#if !editing}
+    {#if !editing && activeTab === 'details'}
       <div class="modal-footer">
         {#each statuses as s (s.key)}
           {#if s.key !== task.status}
@@ -195,6 +235,30 @@
     padding: 0 0.5rem;
     line-height: 1;
   }
+
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid #e5e5ea;
+    padding: 0 1.25rem;
+  }
+
+  .tab {
+    background: none;
+    border: none;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    color: #86868b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab.active {
+    color: #0071e3;
+    border-bottom-color: #0071e3;
+    font-weight: 600;
+  }
+  .tab:not(.active):hover { color: #1d1d1f; }
 
   .modal-body { padding: 1.25rem; }
 
