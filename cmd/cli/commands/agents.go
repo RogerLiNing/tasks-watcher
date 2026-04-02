@@ -32,7 +32,9 @@ func agentsOverviewCmd() *cobra.Command {
 				return err
 			}
 			var result map[string]interface{}
-			json.Unmarshal(resp, &result)
+			if err := json.Unmarshal(resp, &result); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 
 			agents, ok := result["agents"].([]interface{})
 			if !ok || len(agents) == 0 {
@@ -41,14 +43,17 @@ func agentsOverviewCmd() *cobra.Command {
 			}
 
 			// Get active tasks for each agent
-			taskResp, _ := apiRequest("GET", "/api/tasks?status=in_progress", nil)
-			var taskResult map[string]interface{}
-			json.Unmarshal(taskResp, &taskResult)
+			taskResp, err := apiRequest("GET", "/api/tasks?status=in_progress", nil)
 			tasks := []map[string]interface{}{}
-			if t, ok := taskResult["tasks"].([]interface{}); ok {
-				for _, item := range t {
-					if m, ok := item.(map[string]interface{}); ok {
-						tasks = append(tasks, m)
+			if err == nil {
+				var taskResult map[string]interface{}
+				if err2 := json.Unmarshal(taskResp, &taskResult); err2 == nil {
+					if t, ok := taskResult["tasks"].([]interface{}); ok {
+						for _, item := range t {
+							if m, ok := item.(map[string]interface{}); ok {
+								tasks = append(tasks, m)
+							}
+						}
 					}
 				}
 			}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -48,7 +49,9 @@ func projectCreateCmd() *cobra.Command {
 				return err
 			}
 			var p map[string]interface{}
-			json.Unmarshal(resp, &p)
+			if err := json.Unmarshal(resp, &p); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("✓ Project created: %s [%s]\n", p["name"], p["id"])
 			return nil
 		},
@@ -115,11 +118,15 @@ func ConfigCommand() *cobra.Command {
 			RunE: func(cmd *cobra.Command, args []string) error {
 				srv, key := resolveConfig()
 				home, _ := os.UserHomeDir()
-				keyPath := home + "/.tasks-watcher/api.key"
+				keyPath := filepath.Join(home, ".tasks-watcher", "api.key")
 				fmt.Println("Tasks Watcher Configuration")
 				fmt.Println("────────────────────────────")
 				fmt.Printf("Server URL:  %s\n", srv)
-				fmt.Printf("API Key:     %s\n", key)
+				if key != "" && len(key) > 4 {
+					fmt.Printf("API Key:     %s****%s\n", key[:4], key[len(key)-4:])
+				} else {
+					fmt.Printf("API Key:     (not set)\n")
+				}
 				fmt.Printf("Key file:    %s\n", keyPath)
 				if key == "" {
 					fmt.Println("\n⚠ No API key found. Set TASKS_WATCHER_API_KEY or ensure ~/.tasks-watcher/api.key exists.")

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -46,7 +47,10 @@ func apiRequest(method, path string, body interface{}) ([]byte, error) {
 
 	var bodyReader io.Reader
 	if body != nil {
-		data, _ := json.Marshal(body)
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
 		bodyReader = bytes.NewReader(data)
 	}
 
@@ -57,14 +61,17 @@ func apiRequest(method, path string, body interface{}) ([]byte, error) {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server at %s: %v\nMake sure the server is running (`tasks-watcher-server`)", serverURL, err)
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
 	}
@@ -101,7 +108,9 @@ func taskCreateCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("✓ Task created: %s [%s]\n", task["title"], task["id"])
 			return nil
 		},
@@ -139,7 +148,9 @@ func taskListCmd() *cobra.Command {
 				return err
 			}
 			var result map[string][]map[string]interface{}
-			json.Unmarshal(resp, &result)
+			if err := json.Unmarshal(resp, &result); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			tasks := result["tasks"]
 			if len(tasks) == 0 {
 				fmt.Println("No tasks found.")
@@ -178,7 +189,9 @@ func taskStartCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("✓ Task started: %s\n", task["title"])
 			return nil
 		},
@@ -196,7 +209,9 @@ func taskCompleteCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("✓ Task completed: %s\n", task["title"])
 			return nil
 		},
@@ -218,7 +233,9 @@ func taskFailCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("✗ Task failed: %s\n", task["title"])
 			return nil
 		},
@@ -238,7 +255,9 @@ func taskCancelCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("○ Task cancelled: %s\n", task["title"])
 			return nil
 		},
@@ -256,7 +275,9 @@ func taskShowCmd() *cobra.Command {
 				return err
 			}
 			var task map[string]interface{}
-			json.Unmarshal(resp, &task)
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			fmt.Printf("Title:       %s\n", task["title"])
 			fmt.Printf("ID:          %s\n", task["id"])
 			fmt.Printf("Project ID:  %s\n", task["project_id"])
