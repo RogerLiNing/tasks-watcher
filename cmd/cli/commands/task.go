@@ -15,6 +15,14 @@ func TaskCommand() *cobra.Command {
 	taskCmd := &cobra.Command{
 		Use:   "task",
 		Short: "Manage tasks",
+		Long:  "Create, list, update, and delete tasks. Each task is tagged with its source.",
+		Example: `  tasks-watcher task create -t "Fix auth bug" -P high -p myproject
+  tasks-watcher task list -s pending
+  tasks-watcher task start <task-id>
+  tasks-watcher task complete <task-id>
+  tasks-watcher task fail <task-id> -r "API not responding"
+  tasks-watcher task show <task-id>
+  tasks-watcher task delete <task-id>`,
 	}
 
 	taskCmd.AddCommand(
@@ -111,8 +119,9 @@ func taskListCmd() *cobra.Command {
 	var project, status, assignee string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List tasks",
+		Use:     "list",
+		Short:   "List tasks",
+		Example: "  tasks-watcher task list\n  tasks-watcher task list -s in_progress\n  tasks-watcher task list -p <project-id>",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "/api/tasks?"
 			if project != "" {

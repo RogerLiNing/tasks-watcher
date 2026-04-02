@@ -13,6 +13,8 @@ func AgentsCommand() *cobra.Command {
 	agentsCmd := &cobra.Command{
 		Use:   "agents",
 		Short: "Show agent overview",
+		Long:  "See what each agent/tool is working on. Groups tasks by assignee (claude-code, cursor, cli, manual) and shows per-agent stats: active, pending, completed, failed.",
+		Example: `  tasks-watcher agents overview`,
 	}
 	agentsCmd.AddCommand(
 		agentsOverviewCmd(),

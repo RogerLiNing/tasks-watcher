@@ -10,8 +10,11 @@ import (
 
 func ProjectCommand() *cobra.Command {
 	projCmd := &cobra.Command{
-		Use:   "project",
-		Short: "Manage projects",
+		Use:     "project",
+		Short:   "Manage projects",
+		Long:    "Create and list projects. Projects group tasks and provide repo context.",
+		Example: `  tasks-watcher project create -n myproject -d "Backend API service"
+  tasks-watcher project list`,
 	}
 
 	projCmd.AddCommand(

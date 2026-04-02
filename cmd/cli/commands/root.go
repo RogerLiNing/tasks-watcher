@@ -15,6 +15,20 @@ func (r *RootCommand) Execute() error {
 	r.cmd = &cobra.Command{
 		Use:   "tasks-watcher",
 		Short: "Task management CLI for humans and AI agents",
+		Long: `Tasks Watcher — unified task management across Claude Code, Cursor, CLI, and manual entry.
+
+All tasks are tagged with their source (claude-code, cursor, cli, manual),
+so you can see what each tool is working on at a glance.
+
+Start the server first: tasks-watcher-server
+Then run any command. Use --help for details.
+
+Examples:
+  tasks-watcher task create -t "Implement auth" -P high
+  tasks-watcher task list -s in_progress
+  tasks-watcher agents overview
+  tasks-watcher project create -n myproject`,
+		Version: "1.0.0",
 	}
 	r.cmd.AddCommand(
 		TaskCommand(),
