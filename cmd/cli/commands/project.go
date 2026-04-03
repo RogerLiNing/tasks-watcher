@@ -15,11 +15,13 @@ func ProjectCommand() *cobra.Command {
 		Short:   "Manage projects",
 		Long:    "Create and list projects. Projects group tasks and provide repo context.",
 		Example: `  tasks-watcher project create -n myproject -d "Backend API service"
+  tasks-watcher project update <id> -n "New name" -d "Updated description"
   tasks-watcher project list`,
 	}
 
 	projCmd.AddCommand(
 		projectCreateCmd(),
+		projectUpdateCmd(),
 		projectListCmd(),
 		projectDeleteCmd(),
 	)
@@ -60,6 +62,45 @@ func projectCreateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&description, "description", "d", "", "Description")
 	cmd.Flags().StringVarP(&repoPath, "repo-path", "r", "", "Repository path")
 	cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+func projectUpdateCmd() *cobra.Command {
+	var name, description, repoPath string
+
+	cmd := &cobra.Command{
+		Use:   "update <project-id>",
+		Short: "Update a project's name, description, or repo path",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if name != "" {
+				body["name"] = name
+			}
+			if description != "" {
+				body["description"] = description
+			}
+			if repoPath != "" {
+				body["repo_path"] = repoPath
+			}
+			if len(body) == 0 {
+				return fmt.Errorf("no fields to update: specify --name, --description, or --repo-path")
+			}
+			resp, err := apiRequest("PUT", "/api/projects/"+args[0], body)
+			if err != nil {
+				return err
+			}
+			var p map[string]interface{}
+			if err := json.Unmarshal(resp, &p); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
+			fmt.Printf("✓ Project updated: %s [%s]\n", p["name"], p["id"])
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&name, "name", "n", "", "New project name")
+	cmd.Flags().StringVarP(&description, "description", "d", "", "New description")
+	cmd.Flags().StringVarP(&repoPath, "repo-path", "r", "", "Repository path")
 	return cmd
 }
 
