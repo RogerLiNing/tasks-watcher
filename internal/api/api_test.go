@@ -2748,3 +2748,144 @@ func TestNotificationConfigHandler_Upsert_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
+
+func TestNotificationConfigHandler_Upsert_MissingType(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	body := newJSONBody(map[string]interface{}{"enabled": true, "config": map[string]interface{}{"sound": true}})
+	req := httptest.NewRequest("POST", "/notifications/configs", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing type, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationConfigHandler_Upsert_InvalidType(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	body := newJSONBody(map[string]interface{}{"type": "slack", "enabled": true})
+	req := httptest.NewRequest("POST", "/notifications/configs", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid type, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Additional error-path and edge-case tests ---
+
+func TestNotificationHandler_MarkRead_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	notifs, _ := database.ListNotifications(10)
+	unreadID := notifs[0].ID
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("PATCH", "/notifications/"+unreadID+"/read", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationHandler_MarkAllRead_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("POST", "/notifications/read", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationHandler_Clear_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/notifications", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationConfigHandler_Upsert_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationConfigHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]interface{}{"type": "macos", "enabled": true})
+	req := httptest.NewRequest("POST", "/notifications/configs", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/notifications", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationConfigHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationConfigHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/notifications/configs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationConfigHandler_Get_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationConfigHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/notifications/configs/macos", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}

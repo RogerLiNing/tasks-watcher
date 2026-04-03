@@ -532,3 +532,139 @@ func TestSendWebhooks_DoesNotMatchOtherEvents(t *testing.T) {
 		t.Error("expected project.created to NOT match task filter")
 	}
 }
+
+func TestSendWebhooks_HTTPError(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Server returns 500 error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.*",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test"}
+	d.sendWebhooks("task.completed", task)
+	time.Sleep(50 * time.Millisecond) // allow goroutine to complete
+}
+
+func TestSendWebhooks_UnreachableHost(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Unreachable URL — triggers client.Do error path
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    "http://localhost:99999/hook",
+		Events: "task.*",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test"}
+	d.sendWebhooks("task.completed", task)
+	time.Sleep(50 * time.Millisecond) // allow goroutine to complete
+}
+
+func TestSendEmail_MissingSMTPHost(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_username":  "user@example.com",
+			"to_addresses":   []interface{}{"to@example.com"},
+			"from_address":   "from@example.com",
+			// smtp_host is missing
+		},
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "Task completed: Test") // should return early without panic
+}
+
+func TestSendEmail_MissingSMTPUsername(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_host":    "smtp.example.com",
+			"to_addresses": []interface{}{"to@example.com"},
+			"from_address": "from@example.com",
+			// smtp_username is missing
+		},
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "Task completed: Test") // should return early without panic
+}
+
+func TestSendEmail_EmptyToAddresses(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_host":     "smtp.example.com",
+			"smtp_username": "user@example.com",
+			"from_address":  "from@example.com",
+			"to_addresses":  []interface{}{}, // empty
+		},
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "Task completed: Test") // should return early without panic
+}
+
+func TestSendEmail_DisabledConfig(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: false,
+		Config: map[string]interface{}{
+			"smtp_host":     "smtp.example.com",
+			"smtp_username": "user@example.com",
+			"to_addresses":   []interface{}{"to@example.com"},
+		},
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "Task completed: Test") // should return early without panic
+}
+
+func TestNotify_SaveDBError_DoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	database.Close() // DB closed → CreateNotification will fail
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.Notify(models.EventTaskCompleted, task) // should not panic
+}
+
+func TestSendWebhooks_DBError_DoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	database.Close() // DB closed → ListWebhooks will fail
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test"}
+	d.sendWebhooks("task.completed", task) // should not panic
+}
