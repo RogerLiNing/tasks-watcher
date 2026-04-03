@@ -9,11 +9,11 @@
   const dispatch = createEventDispatcher();
 
   const defaultColumns = [
-    { key: 'pending', color: '#86868b' },
-    { key: 'in_progress', color: '#0071e3' },
-    { key: 'completed', color: '#34c759' },
-    { key: 'failed', color: '#ff3b30' },
-    { key: 'cancelled', color: '#ff9500' },
+    { key: 'pending', label: 'Pending', color: '#86868b' },
+    { key: 'in_progress', label: 'In Progress', color: '#0071e3' },
+    { key: 'completed', label: 'Completed', color: '#34c759' },
+    { key: 'failed', label: 'Failed', color: '#ff3b30' },
+    { key: 'cancelled', label: 'Cancelled', color: '#ff9500' },
   ];
 
   $: boardColumns = $columns.length > 0 ? $columns : defaultColumns;
@@ -51,7 +51,7 @@
     >
       <div class="column-header">
         <span class="column-dot" style="background:{col.color}"></span>
-        <span class="column-label">{$t('columns.' + col.key)}</span>
+        <span class="column-label">{col.label}</span>
         <span class="column-count">{tasksByStatus[col.key]?.length || 0}</span>
       </div>
       <div class="column-cards">

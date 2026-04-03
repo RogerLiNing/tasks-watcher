@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/rogerrlee/tasks-watcher/internal/db"
@@ -47,8 +49,8 @@ func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	if req.Key == "" || req.Label == "" {
-		http.Error(w, `{"error":"key and label are required"}`, http.StatusBadRequest)
+	if req.Label == "" {
+		http.Error(w, `{"error":"label is required"}`, http.StatusBadRequest)
 		return
 	}
 	if req.Color == "" {
@@ -59,8 +61,12 @@ func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if position == 0 {
 		position = len(cols)
 	}
+	key := req.Key
+	if key == "" {
+		key = slugify(req.Label)
+	}
 	c := &models.TaskColumn{
-		Key:      req.Key,
+		Key:      key,
 		Label:    req.Label,
 		Color:   req.Color,
 		Position: position,
@@ -146,4 +152,11 @@ func (h *ColumnHandler) Register(router *mux.Router) {
 	r.HandleFunc("", h.Create).Methods("POST")
 	r.HandleFunc("/{id}", h.Update).Methods("PUT")
 	r.HandleFunc("/{id}", h.Delete).Methods("DELETE")
+}
+
+// slugify converts a label to a URL-safe slug key.
+// e.g. "In Review" -> "in_review", "Blocked/Triage" -> "blocked_triage"
+func slugify(label string) string {
+	re := regexp.MustCompile(`[^a-z0-9]+`)
+	return strings.Trim(strings.ToLower(re.ReplaceAllString(label, "_")), "_")
 }
