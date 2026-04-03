@@ -1027,6 +1027,47 @@ func TestGetDependentTasks_WithDependents(t *testing.T) {
 	}
 }
 
+// --- AddSubtask tests ---
+
+func TestAddSubtask_SelfLoop(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	task := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	_, err := db.AddSubtask(task, task)
+	if err == nil {
+		t.Error("expected error for self-loop")
+	}
+}
+
+func TestAddSubtask_ChildNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+
+	_, err := db.AddSubtask(parent, "nonexistent-child-id")
+	if err == nil {
+		t.Error("expected error for nonexistent child")
+	}
+}
+
+func TestAddSubtask_AlreadyHasParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	p1 := makeTask(t, db, pid, "parent1", models.TaskStatusPending)
+	p2 := makeTask(t, db, pid, "parent2", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(p1, child)
+	_, err := db.AddSubtask(p2, child)
+	if err == nil {
+		t.Error("expected error for child already having a parent")
+	}
+}
+
 // --- Subtask query tests ---
 
 func TestGetSubtaskIDs_Empty(t *testing.T) {
@@ -1906,5 +1947,173 @@ func TestExportAll_WithData(t *testing.T) {
 	}
 	if len(notifs) != 1 {
 		t.Errorf("expected 1 notification, got %d", len(notifs))
+	}
+}
+
+// --- Subtask position tests ---
+
+func TestGetSubtaskPosition_Basic(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+
+	pos, err := db.GetSubtaskPosition(parent, child)
+	if err != nil {
+		t.Fatalf("GetSubtaskPosition failed: %v", err)
+	}
+	if pos != 0 {
+		t.Errorf("expected position 0 (first), got %d", pos)
+	}
+}
+
+func TestGetSubtaskPosition_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	pos, err := db.GetSubtaskPosition(parent, child)
+	if err != nil {
+		t.Fatalf("GetSubtaskPosition for nonexistent relation should not error, got: %v", err)
+	}
+	if pos != 0 {
+		t.Errorf("expected 0 for nonexistent relation, got %d", pos)
+	}
+}
+
+func TestGetSubtaskPositions_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+
+	posMap, err := db.GetSubtaskPositions(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskPositions failed: %v", err)
+	}
+	if len(posMap) != 0 {
+		t.Errorf("expected 0 positions, got %d", len(posMap))
+	}
+}
+
+func TestGetSubtaskPositions_WithMultiple(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	c1 := makeTask(t, db, pid, "c1", models.TaskStatusPending)
+	c2 := makeTask(t, db, pid, "c2", models.TaskStatusPending)
+	c3 := makeTask(t, db, pid, "c3", models.TaskStatusPending)
+	db.AddSubtask(parent, c1)
+	db.AddSubtask(parent, c2)
+	db.AddSubtask(parent, c3)
+
+	posMap, err := db.GetSubtaskPositions(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskPositions failed: %v", err)
+	}
+	if len(posMap) != 3 {
+		t.Errorf("expected 3 positions, got %d", len(posMap))
+	}
+	// All should be assigned distinct positions starting at 0.
+	seen := make(map[int]bool)
+	for _, pos := range posMap {
+		if seen[pos] {
+			t.Errorf("duplicate position %d found", pos)
+		}
+		seen[pos] = true
+	}
+}
+
+func TestSetSubtaskPosition_SamePosition(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+
+	// Setting to same position should be a no-op.
+	if err := db.SetSubtaskPosition(parent, child, 0); err != nil {
+		t.Fatalf("SetSubtaskPosition(0) should not error: %v", err)
+	}
+	pos, _ := db.GetSubtaskPosition(parent, child)
+	if pos != 0 {
+		t.Errorf("position should still be 0, got %d", pos)
+	}
+}
+
+func TestSetSubtaskPosition_ShiftUp(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	c1 := makeTask(t, db, pid, "c1", models.TaskStatusPending)
+	c2 := makeTask(t, db, pid, "c2", models.TaskStatusPending)
+	c3 := makeTask(t, db, pid, "c3", models.TaskStatusPending)
+	db.AddSubtask(parent, c1) // pos 0
+	db.AddSubtask(parent, c2) // pos 1
+	db.AddSubtask(parent, c3) // pos 2
+
+	// Move c3 from pos 2 → pos 0 (shift up: c1 and c2 shift down).
+	if err := db.SetSubtaskPosition(parent, c3, 0); err != nil {
+		t.Fatalf("SetSubtaskPosition failed: %v", err)
+	}
+
+	pos1, _ := db.GetSubtaskPosition(parent, c1)
+	pos2, _ := db.GetSubtaskPosition(parent, c2)
+	pos3, _ := db.GetSubtaskPosition(parent, c3)
+	if pos1 != 1 {
+		t.Errorf("c1: expected pos 1, got %d", pos1)
+	}
+	if pos2 != 2 {
+		t.Errorf("c2: expected pos 2, got %d", pos2)
+	}
+	if pos3 != 0 {
+		t.Errorf("c3: expected pos 0, got %d", pos3)
+	}
+}
+
+func TestSetSubtaskPosition_ShiftDown(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	c1 := makeTask(t, db, pid, "c1", models.TaskStatusPending)
+	c2 := makeTask(t, db, pid, "c2", models.TaskStatusPending)
+	c3 := makeTask(t, db, pid, "c3", models.TaskStatusPending)
+	db.AddSubtask(parent, c1) // pos 0
+	db.AddSubtask(parent, c2) // pos 1
+	db.AddSubtask(parent, c3) // pos 2
+
+	// Move c1 from pos 0 → pos 2 (shift down: c2 and c3 shift up).
+	if err := db.SetSubtaskPosition(parent, c1, 2); err != nil {
+		t.Fatalf("SetSubtaskPosition failed: %v", err)
+	}
+
+	pos1, _ := db.GetSubtaskPosition(parent, c1)
+	pos2, _ := db.GetSubtaskPosition(parent, c2)
+	pos3, _ := db.GetSubtaskPosition(parent, c3)
+	if pos1 != 2 {
+		t.Errorf("c1: expected pos 2, got %d", pos1)
+	}
+	if pos2 != 0 {
+		t.Errorf("c2: expected pos 0, got %d", pos2)
+	}
+	if pos3 != 1 {
+		t.Errorf("c3: expected pos 1, got %d", pos3)
+	}
+}
+
+func TestSetSubtaskPosition_NegativeBecomesZero(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+
+	if err := db.SetSubtaskPosition(parent, child, -5); err != nil {
+		t.Fatalf("SetSubtaskPosition(-5) should not error: %v", err)
+	}
+	pos, _ := db.GetSubtaskPosition(parent, child)
+	if pos != 0 {
+		t.Errorf("negative position should clamp to 0, got %d", pos)
 	}
 }
