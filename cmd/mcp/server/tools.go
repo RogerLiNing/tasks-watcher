@@ -153,6 +153,62 @@ func GetToolDefinitions() []Tool {
 				Required:   []string{"project_id"},
 			},
 		},
+		// Subtask tools
+		{
+			Name:        "subtask_create",
+			Description: "Create a subtask under a parent task. The parent auto-completes when all children complete.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: subtaskCreateProps(),
+				Required:   []string{"task_id", "title"},
+			},
+		},
+		{
+			Name:        "subtask_list",
+			Description: "List subtasks of a parent task.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: subtaskListProps(),
+				Required:   []string{"task_id"},
+			},
+		},
+		{
+			Name:        "subtask_reorder",
+			Description: "Move a subtask to a new position within its parent.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: subtaskReorderProps(),
+				Required:   []string{"task_id", "child_id", "position"},
+			},
+		},
+		// Dependency tools
+		{
+			Name:        "dep_add",
+			Description: "Add a blocker (dependency) to a task. The task cannot start until all blockers are completed.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: depAddProps(),
+				Required:   []string{"task_id", "blocker_id"},
+			},
+		},
+		{
+			Name:        "dep_list",
+			Description: "List blockers and dependents of a task.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: subtaskListProps(),
+				Required:   []string{"task_id"},
+			},
+		},
+		{
+			Name:        "dep_check",
+			Description: "Check if a task can be started (all blockers must be completed).",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: subtaskListProps(),
+				Required:   []string{"task_id"},
+			},
+		},
 	}
 }
 
@@ -225,6 +281,38 @@ func projectIDProps(idField, desc string) map[string]SchemaProp {
 	}
 }
 
+func subtaskCreateProps() map[string]SchemaProp {
+	return map[string]SchemaProp{
+		"task_id":   {Type: "string", Description: "Parent task ID (required)"},
+		"title":     {Type: "string", Description: "Subtask title (required)"},
+		"description": {Type: "string", Description: "Subtask description"},
+		"priority":  {Type: "string", Description: "Priority", Enum: []string{"low", "medium", "high", "urgent"}},
+		"assignee":  {Type: "string", Description: "Assignee"},
+		"position":  {Type: "integer", Description: "Insert position (1-based, defaults to end)"},
+	}
+}
+
+func subtaskListProps() map[string]SchemaProp {
+	return map[string]SchemaProp{
+		"task_id": {Type: "string", Description: "Parent task ID (required)"},
+	}
+}
+
+func subtaskReorderProps() map[string]SchemaProp {
+	return map[string]SchemaProp{
+		"task_id":   {Type: "string", Description: "Parent task ID (required)"},
+		"child_id":  {Type: "string", Description: "Subtask ID to move (required)"},
+		"position":  {Type: "integer", Description: "New position (1-based, required)"},
+	}
+}
+
+func depAddProps() map[string]SchemaProp {
+	return map[string]SchemaProp{
+		"task_id":     {Type: "string", Description: "Task ID that will be blocked (required)"},
+		"blocker_id":  {Type: "string", Description: "ID of the task acting as blocker (required)"},
+	}
+}
+
 // ExecuteTool runs the named tool with given arguments
 func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[string]interface{}) (*mcp.ToolsCallResult, error) {
 	switch name {
@@ -254,6 +342,18 @@ func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[
 		return api.ProjectUpdate(args)
 	case "project_delete":
 		return api.ProjectDelete(args)
+	case "subtask_create":
+		return api.SubtaskCreate(args)
+	case "subtask_list":
+		return api.SubtaskList(args)
+	case "subtask_reorder":
+		return api.SubtaskReorder(args)
+	case "dep_add":
+		return api.DepAdd(args)
+	case "dep_list":
+		return api.DepList(args)
+	case "dep_check":
+		return api.DepCheck(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}

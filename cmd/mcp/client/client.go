@@ -567,6 +567,276 @@ func (c *Client) ProjectDelete(args map[string]interface{}) (*mcp.ToolsCallResul
 	}, nil
 }
 
+// Subtask operations
+
+func (c *Client) SubtaskCreate(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+	title := str(args["title"], "")
+	if title == "" {
+		return nil, fmt.Errorf("title is required")
+	}
+
+	body := map[string]interface{}{"title": title}
+	if desc := str(args["description"], ""); desc != "" {
+		body["description"] = desc
+	}
+	if pri := str(args["priority"], ""); pri != "" {
+		body["priority"] = pri
+	}
+	if asgn := str(args["assignee"], ""); asgn != "" {
+		body["assignee"] = asgn
+	}
+	if pos := intArg(args["position"]); pos > 0 {
+		body["position"] = pos
+	}
+
+	data, status, err := c.do("POST", "/api/tasks/"+taskID+"/subtasks", body)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(data))
+	}
+
+	var result struct {
+		Task struct {
+			ID     string `json:"id"`
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("invalid response: %w", err)
+	}
+
+	text := fmt.Sprintf("✅ Subtask created: [%s] %s\nStatus: %s",
+		result.Task.ID[:8], result.Task.Title, result.Task.Status)
+
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
+func (c *Client) SubtaskList(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+
+	data, status, err := c.do("GET", "/api/tasks/"+taskID+"/subtasks", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(data))
+	}
+
+	var result struct {
+		Subtasks []struct {
+			ID       string `json:"id"`
+			Title    string `json:"title"`
+			Status   string `json:"status"`
+			Position int    `json:"position"`
+		} `json:"subtasks"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("invalid response: %w", err)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Subtasks of [%s] (%d):\n\n", taskID[:8], len(result.Subtasks)))
+	if len(result.Subtasks) == 0 {
+		sb.WriteString("(none)")
+	}
+	for _, s := range result.Subtasks {
+		sb.WriteString(fmt.Sprintf("  [%d] [%s] %s [%s]\n", s.Position, s.Status, s.Title, s.ID[:8]))
+	}
+
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: sb.String()}},
+	}, nil
+}
+
+func (c *Client) SubtaskReorder(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+	childID := str(args["child_id"], "")
+	if childID == "" {
+		return nil, fmt.Errorf("child_id is required")
+	}
+	pos := intArg(args["position"])
+	if pos < 1 {
+		return nil, fmt.Errorf("position must be >= 1")
+	}
+
+	_, status, err := c.do("PATCH", "/api/tasks/"+taskID+"/subtasks/"+childID+"/position",
+		map[string]int{"position": pos})
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+
+	text := fmt.Sprintf("✅ Moved subtask [%s] to position %d in [%s]", childID[:8], pos, taskID[:8])
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
+// Dependency operations
+
+func (c *Client) DepAdd(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+	blockerID := str(args["blocker_id"], "")
+	if blockerID == "" {
+		return nil, fmt.Errorf("blocker_id is required")
+	}
+
+	_, status, err := c.do("POST", "/api/tasks/"+taskID+"/dependencies",
+		map[string]string{"blocker_id": blockerID})
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+
+	text := fmt.Sprintf("🔗 Added blocker [%s] → task [%s]", blockerID[:8], taskID[:8])
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
+func (c *Client) DepList(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Dependencies for [%s]:\n\n", taskID[:8]))
+
+	// Blockers
+	blockData, status, err := c.do("GET", "/api/tasks/"+taskID+"/dependencies", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+	var blockResult struct {
+		Blockers []struct {
+			ID     string `json:"id"`
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"blockers"`
+	}
+	json.Unmarshal(blockData, &blockResult)
+	sb.WriteString(fmt.Sprintf("Blocked by (%d):\n", len(blockResult.Blockers)))
+	if len(blockResult.Blockers) == 0 {
+		sb.WriteString("  (none)\n")
+	}
+	for _, b := range blockResult.Blockers {
+		sb.WriteString(fmt.Sprintf("  [%s] %s [%s]\n", b.Status, b.Title, b.ID[:8]))
+	}
+
+	// Dependents
+	depData, status, err := c.do("GET", "/api/tasks/"+taskID+"/dependents", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+	var depResult struct {
+		Dependents []struct {
+			ID     string `json:"id"`
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"dependents"`
+	}
+	json.Unmarshal(depData, &depResult)
+	sb.WriteString(fmt.Sprintf("\nBlocking (%d):\n", len(depResult.Dependents)))
+	if len(depResult.Dependents) == 0 {
+		sb.WriteString("  (none)")
+	}
+	for _, d := range depResult.Dependents {
+		sb.WriteString(fmt.Sprintf("  [%s] %s [%s]\n", d.Status, d.Title, d.ID[:8]))
+	}
+
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: sb.String()}},
+	}, nil
+}
+
+func (c *Client) DepCheck(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	taskID := str(args["task_id"], "")
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+
+	data, status, err := c.do("GET", "/api/tasks/"+taskID+"/can-start", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(data))
+	}
+
+	var result struct {
+		CanStart bool `json:"can_start"`
+	}
+	json.Unmarshal(data, &result)
+
+	if result.CanStart {
+		return &mcp.ToolsCallResult{
+			Content: []mcp.ContentBlock{{Type: "text", Text: fmt.Sprintf("✅ Task [%s] can start — no blockers pending", taskID[:8])}},
+		}, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔒 Task [%s] is blocked:\n", taskID[:8]))
+
+	// Try to extract blocker info from can-start response
+	var fullResult map[string]interface{}
+	json.Unmarshal(data, &fullResult)
+	if blockers, ok := fullResult["blockers"].([]interface{}); ok && len(blockers) > 0 {
+		sb.WriteString("  Blocked by incomplete tasks:\n")
+		for _, b := range blockers {
+			sb.WriteString(fmt.Sprintf("    - %v\n", b))
+		}
+	}
+
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: sb.String()}},
+	}, nil
+}
+
+// intArg extracts an integer from a map value.
+func intArg(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	}
+	return 0
+}
+
 // str helper
 func str(v interface{}, def string) string {
 	if v == nil {
