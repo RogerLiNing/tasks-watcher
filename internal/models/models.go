@@ -165,7 +165,7 @@ func MergeDescription(existing map[string]string, val interface{}) map[string]st
 			}
 		} else {
 			// Plain string — store with default locale key
-			result["_plain"] = v
+			result["en"] = v
 		}
 	}
 	return result
