@@ -736,3 +736,15 @@ func TestMacosNotification_NonDarwinReturnsEarly(t *testing.T) {
 	// Should not panic on non-Darwin
 	d.macosNotification("body", "title")
 }
+
+func TestMacosNotification_OnDarwin(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Darwin-only test")
+	}
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	d := NewDispatcher(database, nil)
+	// Should not panic — osascript will fail silently if no Notification Center,
+	// but the function should handle it gracefully.
+	d.macosNotification("test body", "test title")
+}

@@ -3607,3 +3607,41 @@ func TestProjectHandler_Update_WithRepoPath(t *testing.T) {
 		t.Errorf("expected repo_path '/test/repo', got %q", updated.RepoPath)
 	}
 }
+
+func TestAuthMiddleware_QueryParamAuth_WrongKey(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	// Wrong API key in query param should return 401
+	req := httptest.NewRequest("GET", "/tasks?api_key=wrong-key", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 with wrong query param key, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Create_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewColumnHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"label": "New Column"})
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
