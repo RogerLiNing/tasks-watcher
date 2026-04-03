@@ -90,7 +90,11 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p, err := h.db.GetProject(id)
-	if err != nil || p == nil {
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	if p == nil {
 		http.Error(w, `{"error":"project not found"}`, http.StatusNotFound)
 		return
 	}

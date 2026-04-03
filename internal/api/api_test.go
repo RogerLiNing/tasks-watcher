@@ -2889,3 +2889,133 @@ func TestNotificationConfigHandler_Get_DBError(t *testing.T) {
 		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// --- AgentHandler DB error tests ---
+
+func TestAgentHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAgentHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/agents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAgentHandler_Overview_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAgentHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/agents/overview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- ProjectHandler DB error and validation tests ---
+
+func TestProjectHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/projects", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Get_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/projects/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Create_MissingName(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	body := newJSONBody(map[string]interface{}{"description": "has desc but no name"})
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing name, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Update_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"name": "new-name"})
+	req := httptest.NewRequest("PUT", "/projects/some-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Delete_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/projects/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- ColumnHandler DB error test ---
+
+func TestColumnHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewColumnHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/columns", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
