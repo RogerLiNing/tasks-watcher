@@ -276,6 +276,9 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 		var parsed map[string]string
 		if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
 			t.Description = parsed
+		} else {
+			// Legacy plain-string description — treat as English
+			t.Description = map[string]string{"en": descStr.String}
 		}
 	}
 	if taskMode.Valid && taskMode.String != "" {
@@ -357,6 +360,8 @@ func (db *DB) ListTasks(projectID, status, assignee, search, source string, limi
 			var parsed map[string]string
 			if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
 				t.Description = parsed
+			} else {
+				t.Description = map[string]string{"en": descStr.String}
 			}
 		}
 		if taskMode.Valid && taskMode.String != "" {
