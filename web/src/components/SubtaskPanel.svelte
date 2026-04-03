@@ -110,7 +110,7 @@
     {#if parent}
       <div class="parent-link">
         <span class="parent-label">Part of:</span>
-        <span class="parent-title" on:click={() => openTask(parent.id)}>{parent.title}</span>
+        <button class="parent-title link-btn" on:click={() => openTask(parent.id)}>{parent.title}</button>
       </div>
     {/if}
 
@@ -165,7 +165,7 @@
               >↓</button>
             {/if}
             <span class="subtask-status" data-status={s.status}></span>
-            <span class="subtask-title" on:click={() => openTask(s.id)}>{s.title}</span>
+            <button class="subtask-title link-btn" on:click={() => openTask(s.id)}>{s.title}</button>
             <button class="remove-btn" on:click={() => removeSubtask(s.id)} title="Remove from subtasks">×</button>
           </div>
         {/each}
@@ -238,11 +238,16 @@
   }
 
   .parent-title {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
     color: #0071e3;
     cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: left;
   }
   .parent-title:hover { text-decoration: underline; }
 
@@ -354,11 +359,16 @@
 
   .subtask-title {
     flex: 1;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
     cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: #1d1d1f;
+    text-align: left;
   }
   .subtask-title:hover { color: #0071e3; }
 
