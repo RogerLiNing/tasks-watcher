@@ -170,7 +170,8 @@
   "time": {
     "justNow": "just now",
     "minutesAgo": "{n}m ago",
-    "hoursAgo": "{n}h ago"
+    "hoursAgo": "{n}h ago",
+    "noTimestamp": "—"
   },
   "sse": {
     "connected": "Real-time connected",

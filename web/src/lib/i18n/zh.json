@@ -170,7 +170,8 @@
   "time": {
     "justNow": "刚刚",
     "minutesAgo": "{n}分钟前",
-    "hoursAgo": "{n}小时前"
+    "hoursAgo": "{n}小时前",
+    "noTimestamp": "—"
   },
   "sse": {
     "connected": "实时连接正常",

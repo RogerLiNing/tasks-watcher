@@ -65,10 +65,10 @@
     editing = false;
   }
 
-  function formatTime(ts) {
-    if (!ts) return '—';
+  $: formatTime = (ts) => {
+    if (!ts) return $t('time.noTimestamp');
     return new Date(ts * 1000).toLocaleString();
-  }
+  };
 
   function openTaskInModal(taskId) {
     // Close current modal and dispatch openTask for the new task

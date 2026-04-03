@@ -126,13 +126,13 @@
         <!-- macOS Notifications -->
         <section class="notif-section">
           <div class="section-header">
-            <h3>{$t('notificationSettings.macosSection') || 'macOS Notification Center'}</h3>
+            <h3>{$t('notificationSettings.macosSection')}</h3>
             <label class="toggle-label">
               <input type="checkbox" bind:checked={macosEnabled} />
               <span>{macosEnabled ? $t('common.on') : $t('common.off')}</span>
             </label>
           </div>
-          <p class="section-desc">{$t('notificationSettings.macosDesc') || 'Show macOS system notifications when tasks start, complete, or fail.'}</p>
+          <p class="section-desc">{$t('notificationSettings.macosDesc')}</p>
           <button class="save-btn" on:click={saveMacos} disabled={saving}>
             {saving ? $t('common.saving') : $t('notificationSettings.saveBtn')}
           </button>
