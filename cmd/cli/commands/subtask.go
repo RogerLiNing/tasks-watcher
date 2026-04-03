@@ -19,6 +19,7 @@ func TaskSubtaskCommand() *cobra.Command {
 		taskSubtaskLinkCmd(),
 		taskSubtaskListCmd(),
 		taskSubtaskRemoveCmd(),
+		taskSubtaskReorderCmd(),
 	)
 	return cmd
 }
@@ -181,5 +182,39 @@ func taskSubtaskRemoveCmd() *cobra.Command {
 	c.Flags().StringVarP(&childID, "remove", "r", "", "Subtask ID to remove")
 	c.MarkFlagRequired("task-id")
 	c.MarkFlagRequired("remove")
+	return c
+}
+
+func taskSubtaskReorderCmd() *cobra.Command {
+	var taskID, childID string
+	var position int
+	c := &cobra.Command{
+		Use:   "reorder --task-id <id> --child-id <id> --position <n>",
+		Short: "Move a subtask to a new position",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return fmt.Errorf("--task-id is required")
+			}
+			if childID == "" {
+				return fmt.Errorf("--child-id is required")
+			}
+			if position < 1 {
+				return fmt.Errorf("--position must be >= 1")
+			}
+			body := map[string]int{"position": position}
+			_, err := apiRequest("PATCH", "/api/tasks/"+taskID+"/subtasks/"+childID+"/position", body)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("✓ Moved subtask %s to position %d in %s\n", childID, position, taskID)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
+	c.Flags().StringVar(&childID, "child-id", "", "Subtask ID to move (required)")
+	c.Flags().IntVar(&position, "position", 0, "New position (1-based, required)")
+	c.MarkFlagRequired("task-id")
+	c.MarkFlagRequired("child-id")
+	c.MarkFlagRequired("position")
 	return c
 }

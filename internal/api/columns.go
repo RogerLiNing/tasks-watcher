@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -64,6 +65,17 @@ func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
 	key := req.Key
 	if key == "" {
 		key = slugify(req.Label)
+	}
+	// Deduplicate: append _2, _3, etc. if key already exists
+	usedKeys := make(map[string]bool)
+	for _, c := range cols {
+		usedKeys[c.Key] = true
+	}
+	base := key
+	counter := 2
+	for usedKeys[key] {
+		key = fmt.Sprintf("%s_%d", base, counter)
+		counter++
 	}
 	c := &models.TaskColumn{
 		Key:      key,
@@ -155,8 +167,14 @@ func (h *ColumnHandler) Register(router *mux.Router) {
 }
 
 // slugify converts a label to a URL-safe slug key.
-// e.g. "In Review" -> "in_review", "Blocked/Triage" -> "blocked_triage"
+// Non-ASCII characters are preserved; spaces/special chars become underscores.
 func slugify(label string) string {
+	// Replace non-alphanumeric runs (except ASCII letters/numbers) with underscore
 	re := regexp.MustCompile(`[^a-z0-9]+`)
-	return strings.Trim(strings.ToLower(re.ReplaceAllString(label, "_")), "_")
+	slug := strings.Trim(re.ReplaceAllString(strings.ToLower(label), "_"), "_")
+	// If slug is empty (e.g. pure CJK), use a prefix so we still get a key
+	if slug == "" {
+		return "col"
+	}
+	return slug
 }
