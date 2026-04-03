@@ -790,6 +790,61 @@ func TestTaskHandler_UpdateStatus_BlockedByDependency(t *testing.T) {
 	}
 }
 
+func TestTaskHandler_UpdateStatus_BlockedBySequentialSibling(t *testing.T) {
+	router, database := newTestTaskSubtaskRouter(t)
+
+	// Create parent and set it to sequential mode via DB directly.
+	parent := createTaskViaRouter(t, router, "Sequential Parent")
+	p, _ := database.GetTask(parent.ID)
+	p.TaskMode = models.TaskModeSequential
+	database.UpdateTask(p)
+
+	// Start parent so it's not pending.
+	_ = updateStatus(router, parent.ID, "in_progress")
+
+	// Create first child and start it (not terminal).
+	child1 := createTaskViaRouter(t, router, "Child 1")
+	addSubtaskViaRouter(t, router, parent.ID, child1.ID)
+	_ = updateStatus(router, child1.ID, "in_progress")
+
+	// Create second child (position=1, after child1=0) and try to start.
+	child2 := createTaskViaRouter(t, router, "Child 2")
+	addSubtaskViaRouter(t, router, parent.ID, child2.ID)
+
+	// Verify DB state before the status update.
+	pCheck, _ := database.GetTask(parent.ID)
+	c1Check, _ := database.GetTask(child1.ID)
+	c2Check, _ := database.GetTask(child2.ID)
+	parentID, _ := database.GetParentID(child2.ID)
+	seqTitle, _ := database.GetPrevSequentialSiblingTitle(child2.ID)
+	if pCheck.TaskMode != models.TaskModeSequential {
+		t.Fatalf("parent task_mode: got %q, want %q", pCheck.TaskMode, models.TaskModeSequential)
+	}
+	if parentID != parent.ID {
+		t.Fatalf("child2 parentID: got %q, want %q", parentID, parent.ID)
+	}
+	if seqTitle == "" {
+		t.Fatalf("GetPrevSequentialSiblingTitle(child2): got empty, want Child 1")
+	}
+	_ = c1Check
+	_ = c2Check
+
+	updateReq := httptest.NewRequest("PATCH", "/tasks/"+child2.ID+"/status",
+		bytes.NewBufferString(`{"status":"in_progress"}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateW := httptest.NewRecorder()
+	router.ServeHTTP(updateW, updateReq)
+
+	if updateW.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for sequential-blocked task, got %d: %s", updateW.Code, updateW.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(updateW.Body).Decode(&resp)
+	if resp["blocked_by_sequential"] != true {
+		t.Errorf("expected blocked_by_sequential=true, got %v", resp["blocked_by_sequential"])
+	}
+}
+
 func TestTaskHandler_UpdateStatus_WithReason(t *testing.T) {
 	router, _ := newTestTaskRouter(t)
 	task := createTaskViaRouter(t, router, "Test task")
@@ -1427,6 +1482,17 @@ func TestProjectHandler_List_AfterCreate(t *testing.T) {
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
 	}
+}
+
+// --- SSE tests ---
+
+func TestBroadcastTaskEvent_NonNilSSE_DoesNotPanic(t *testing.T) {
+	sse := NewSSEHandler("test-key")
+	// Calling BroadcastTaskEvent with a non-nil SSE should not panic.
+	// The actual broadcast to SSE clients requires an active HTTP streaming connection,
+	// which httptest cannot produce (context never cancels), so we verify the call
+	// does not panic and returns cleanly.
+	BroadcastTaskEvent(sse, "task.created", &models.Task{ID: "test", Title: "test"})
 }
 
 // --- ColumnHandler tests ---
@@ -2221,6 +2287,91 @@ func TestDepHandler_CanStart_Blocked(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&result)
 	if result["can_start"] != false {
 		t.Errorf("expected can_start=false, got %v", result["can_start"])
+	}
+}
+
+func TestDepHandler_CanStart_NonExistentTask(t *testing.T) {
+	router, _ := newTestDepRouter(t)
+
+	// Non-existent task has no blockers, so can_start=true
+	req := httptest.NewRequest("GET", "/tasks/nonexistent-id/can-start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for non-existent task, got %d: %s", w.Code, w.Body.String())
+	}
+	var result map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["can_start"] != true {
+		t.Errorf("expected can_start=true for non-existent task, got %v", result["can_start"])
+	}
+}
+
+func TestDepHandler_AddBlocker_TaskNotFound(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	blocker := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+
+	body := newJSONBody(map[string]string{"blocker_id": blocker})
+	req := httptest.NewRequest("POST", "/tasks/nonexistent-task/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	// Non-existent task: AddDependency returns error
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-existent task, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDepHandler_RemoveBlocker_NonExistentTask(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "t1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "t2", models.TaskStatusInProgress)
+	database.AddDependency(t1, t2)
+
+	// Non-existent task: RemoveDependency removes nothing, no error
+	req := httptest.NewRequest("DELETE", "/tasks/nonexistent-task/dependencies/"+t2, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204 for non-existent task, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_ListBlockers_NonExistentTask(t *testing.T) {
+	router, _ := newTestDepRouter(t)
+
+	// Non-existent task has no blockers
+	req := httptest.NewRequest("GET", "/tasks/nonexistent-id/dependencies", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for non-existent task, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	blockers := resp["blockers"].([]interface{})
+	if len(blockers) != 0 {
+		t.Errorf("expected 0 blockers for non-existent task, got %d", len(blockers))
+	}
+}
+
+func TestDepHandler_ListDependents_NonExistentTask(t *testing.T) {
+	router, _ := newTestDepRouter(t)
+
+	// Non-existent task has no dependents
+	req := httptest.NewRequest("GET", "/tasks/nonexistent-id/dependents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for non-existent task, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	deps := resp["dependents"].([]interface{})
+	if len(deps) != 0 {
+		t.Errorf("expected 0 dependents for non-existent task, got %d", len(deps))
 	}
 }
 

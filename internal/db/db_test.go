@@ -2117,3 +2117,134 @@ func TestSetSubtaskPosition_NegativeBecomesZero(t *testing.T) {
 		t.Errorf("negative position should clamp to 0, got %d", pos)
 	}
 }
+
+func TestGetPrevSequentialSiblingTitle_NotSubtask(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	task := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	title, err := db.GetPrevSequentialSiblingTitle(task)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "" {
+		t.Errorf("expected empty for non-subtask, got %q", title)
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_NotSequentialParent(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+
+	title, err := db.GetPrevSequentialSiblingTitle(child)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "" {
+		t.Errorf("expected empty for non-sequential parent, got %q", title)
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_FirstChild(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parentID := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	p, _ := db.GetTask(parentID)
+	p.TaskMode = models.TaskModeSequential
+	db.UpdateTask(p)
+	child := makeTask(t, db, pid, "first-child", models.TaskStatusPending)
+	db.AddSubtask(parentID, child)
+
+	title, err := db.GetPrevSequentialSiblingTitle(child)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "" {
+		t.Errorf("expected empty for first child, got %q", title)
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_PrevTerminal(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parentID := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	p, _ := db.GetTask(parentID)
+	p.TaskMode = models.TaskModeSequential
+	db.UpdateTask(p)
+	c1 := makeTask(t, db, pid, "c1", models.TaskStatusCompleted)
+	c2 := makeTask(t, db, pid, "c2", models.TaskStatusPending)
+	db.AddSubtask(parentID, c1)
+	db.AddSubtask(parentID, c2)
+
+	title, err := db.GetPrevSequentialSiblingTitle(c2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "" {
+		t.Errorf("expected empty when prev is terminal, got %q", title)
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_PrevNotTerminal(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parentID := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	p, _ := db.GetTask(parentID)
+	p.TaskMode = models.TaskModeSequential
+	db.UpdateTask(p)
+	c1 := makeTask(t, db, pid, "first", models.TaskStatusInProgress)
+	c2 := makeTask(t, db, pid, "second", models.TaskStatusPending)
+	db.AddSubtask(parentID, c1)
+	db.AddSubtask(parentID, c2)
+
+	title, err := db.GetPrevSequentialSiblingTitle(c2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "first" {
+		t.Errorf("expected 'first', got %q", title)
+	}
+}
+
+func TestGetSubtaskIDAtPosition_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	db.AddSubtask(parent.ID, child.ID)
+
+	// Position 99 does not exist
+	id, err := db.getSubtaskIDAtPosition(parent.ID, 99)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "" {
+		t.Errorf("expected empty string for non-existent position, got %q", id)
+	}
+}
+
+func TestSetSubtaskPosition_NotASubtask(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+
+	// child is not a subtask of parent
+	err := db.SetSubtaskPosition(parent.ID, child.ID, 5)
+	if err != nil {
+		t.Fatalf("SetSubtaskPosition for non-subtask should not error, got: %v", err)
+	}
+}
