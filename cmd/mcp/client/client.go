@@ -235,17 +235,69 @@ func (c *Client) TaskShow(args map[string]interface{}) (*mcp.ToolsCallResult, er
 		return nil, fmt.Errorf("invalid response: %w", err)
 	}
 
-	text := fmt.Sprintf("Task: %s\nID: %s\nStatus: %s\nPriority: %s\nAssignee: %s\nTaskMode: %s\nCreated: %d",
-		task.Title, task.ID, task.Status, task.Priority, task.Assignee, task.TaskMode, task.CreatedAt)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Task: %s\nID: %s\nStatus: %s\nPriority: %s\nAssignee: %s\nMode: %s\nCreated: %d",
+		task.Title, task.ID, task.Status, task.Priority, task.Assignee, task.TaskMode, task.CreatedAt))
 	if len(task.Description) > 0 {
-		text += fmt.Sprintf("\nDescription: %v", task.Description)
+		sb.WriteString(fmt.Sprintf("\nDescription: %v", task.Description))
 	}
 	if task.ErrorMsg != "" {
-		text += fmt.Sprintf("\nError: %s", task.ErrorMsg)
+		sb.WriteString(fmt.Sprintf("\nError: %s", task.ErrorMsg))
+	}
+
+	// Fetch subtasks
+	if subData, _, err := c.do("GET", "/api/tasks/"+id+"/subtasks", nil); err == nil {
+		var subResult struct {
+			Subtasks []struct {
+				ID     string `json:"id"`
+				Title  string `json:"title"`
+				Status string `json:"status"`
+			} `json:"subtasks"`
+		}
+		if json.Unmarshal(subData, &subResult) == nil && len(subResult.Subtasks) > 0 {
+			sb.WriteString(fmt.Sprintf("\n\nSubtasks (%d):", len(subResult.Subtasks)))
+			for _, s := range subResult.Subtasks {
+				sb.WriteString(fmt.Sprintf("\n  [%s] %s", s.Status, s.Title))
+			}
+		}
+	}
+
+	// Fetch blockers
+	if depData, _, err := c.do("GET", "/api/tasks/"+id+"/dependencies", nil); err == nil {
+		var depResult struct {
+			Blockers []struct {
+				ID     string `json:"id"`
+				Title  string `json:"title"`
+				Status string `json:"status"`
+			} `json:"blockers"`
+		}
+		if json.Unmarshal(depData, &depResult) == nil && len(depResult.Blockers) > 0 {
+			sb.WriteString(fmt.Sprintf("\n\nBlocked by (%d):", len(depResult.Blockers)))
+			for _, b := range depResult.Blockers {
+				sb.WriteString(fmt.Sprintf("\n  [%s] %s", b.Status, b.Title))
+			}
+		}
+	}
+
+	// Fetch dependents
+	if dep2Data, _, err := c.do("GET", "/api/tasks/"+id+"/dependents", nil); err == nil {
+		var dep2Result struct {
+			Dependents []struct {
+				ID     string `json:"id"`
+				Title  string `json:"title"`
+				Status string `json:"status"`
+			} `json:"dependents"`
+		}
+		if json.Unmarshal(dep2Data, &dep2Result) == nil && len(dep2Result.Dependents) > 0 {
+			sb.WriteString(fmt.Sprintf("\n\nBlocking (%d):", len(dep2Result.Dependents)))
+			for _, d := range dep2Result.Dependents {
+				sb.WriteString(fmt.Sprintf("\n  [%s] %s", d.Status, d.Title))
+			}
+		}
 	}
 
 	return &mcp.ToolsCallResult{
-		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+		Content: []mcp.ContentBlock{{Type: "text", Text: sb.String()}},
 	}, nil
 }
 

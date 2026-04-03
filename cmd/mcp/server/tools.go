@@ -55,7 +55,7 @@ func GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "task_show",
-			Description: "Show detailed information about a specific task.",
+			Description: "Show detailed information about a specific task, including subtasks, blockers, and dependents.",
 			InputSchema: ToolInputSchema{
 				Type:       "object",
 				Properties: taskShowProps(),
