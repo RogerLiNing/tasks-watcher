@@ -48,6 +48,29 @@ func newJSONBody(v interface{}) *bytes.Buffer {
 	return bytes.NewBuffer(data)
 }
 
+// makeProject creates a project in the database and returns its ID.
+func makeProject(t *testing.T, database *db.DB, name string) string {
+	p := &models.Project{Name: name}
+	if err := database.CreateProject(p); err != nil {
+		t.Fatalf("CreateProject(%q) failed: %v", name, err)
+	}
+	return p.ID
+}
+
+// makeTask creates a task in the database and returns its ID.
+func makeTask(t *testing.T, database *db.DB, projectID, title string, status models.TaskStatus) string {
+	task := &models.Task{
+		ProjectID: projectID,
+		Title:    title,
+		Status:   status,
+		Priority: models.PriorityMedium,
+	}
+	if err := database.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask(%q) failed: %v", title, err)
+	}
+	return task.ID
+}
+
 func TestTaskHandler_List(t *testing.T) {
 	router, _ := newTestTaskRouter(t)
 
@@ -1537,5 +1560,587 @@ func TestSubtaskHandler_GetParent_WithParent(t *testing.T) {
 	parentData := resp["parent"].(map[string]interface{})
 	if parentData["id"] != pid {
 		t.Errorf("expected parent id %q, got %q", pid, parentData["id"])
+	}
+}
+
+// --- DepHandler tests ---
+
+func newTestDepRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	handler := NewDepHandler(database, sse)
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router, database
+}
+
+func TestDepHandler_ListBlockers_Empty(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	req := httptest.NewRequest("GET", "/tasks/"+tid+"/dependencies", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	blockers := resp["blockers"].([]interface{})
+	if len(blockers) != 0 {
+		t.Errorf("expected 0 blockers, got %d", len(blockers))
+	}
+}
+
+func TestDepHandler_ListBlockers_WithBlockers(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "task1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+	database.AddDependency(t1, t2)
+
+	req := httptest.NewRequest("GET", "/tasks/"+t1+"/dependencies", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	blockers := resp["blockers"].([]interface{})
+	if len(blockers) != 1 {
+		t.Errorf("expected 1 blocker, got %d", len(blockers))
+	}
+}
+
+func TestDepHandler_ListDependents_Empty(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	req := httptest.NewRequest("GET", "/tasks/"+tid+"/dependents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	deps := resp["dependents"].([]interface{})
+	if len(deps) != 0 {
+		t.Errorf("expected 0 dependents, got %d", len(deps))
+	}
+}
+
+func TestDepHandler_ListDependents_WithDependents(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	blocker := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+	dependent := makeTask(t, database, pid, "dependent", models.TaskStatusPending)
+	database.AddDependency(dependent, blocker)
+
+	req := httptest.NewRequest("GET", "/tasks/"+blocker+"/dependents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	deps := resp["dependents"].([]interface{})
+	if len(deps) != 1 {
+		t.Errorf("expected 1 dependent, got %d", len(deps))
+	}
+}
+
+func TestDepHandler_AddBlocker_Success(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "task1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+
+	body := newJSONBody(map[string]string{"blocker_id": t2})
+	req := httptest.NewRequest("POST", "/tasks/"+t1+"/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDepHandler_AddBlocker_MissingBlockerID(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	body := newJSONBody(map[string]string{"blocker_id": ""})
+	req := httptest.NewRequest("POST", "/tasks/"+tid+"/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_AddBlocker_SelfLoop(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	body := newJSONBody(map[string]string{"blocker_id": tid})
+	req := httptest.NewRequest("POST", "/tasks/"+tid+"/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for self-loop, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_AddBlocker_Circular(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "t1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "t2", models.TaskStatusPending)
+	t3 := makeTask(t, database, pid, "t3", models.TaskStatusPending)
+	database.AddDependency(t1, t2)
+	database.AddDependency(t2, t3)
+
+	body := newJSONBody(map[string]string{"blocker_id": t1})
+	req := httptest.NewRequest("POST", "/tasks/"+t3+"/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for circular dep, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_AddBlocker_InvalidJSON(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	req := httptest.NewRequest("POST", "/tasks/"+tid+"/dependencies", bytes.NewBufferString(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_RemoveBlocker_Success(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "task1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+	database.AddDependency(t1, t2)
+
+	req := httptest.NewRequest("DELETE", "/tasks/"+t1+"/dependencies/"+t2, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestDepHandler_CanStart_NoBlockers(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	tid := makeTask(t, database, pid, "task", models.TaskStatusPending)
+
+	req := httptest.NewRequest("GET", "/tasks/"+tid+"/can-start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var result map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["can_start"] != true {
+		t.Errorf("expected can_start=true, got %v", result["can_start"])
+	}
+}
+
+func TestDepHandler_CanStart_Blocked(t *testing.T) {
+	router, database := newTestDepRouter(t)
+	pid := makeProject(t, database, "proj")
+	t1 := makeTask(t, database, pid, "task1", models.TaskStatusPending)
+	t2 := makeTask(t, database, pid, "blocker", models.TaskStatusInProgress)
+	database.AddDependency(t1, t2)
+
+	req := httptest.NewRequest("GET", "/tasks/"+t1+"/can-start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var result map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["can_start"] != false {
+		t.Errorf("expected can_start=false, got %v", result["can_start"])
+	}
+}
+
+// --- NotificationHandler tests ---
+
+func newTestNotifRouter(t *testing.T) *mux.Router {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router
+}
+
+func TestNotificationHandler_List_Empty(t *testing.T) {
+	router := newTestNotifRouter(t)
+
+	req := httptest.NewRequest("GET", "/notifications", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["unread_count"].(float64) != 0 {
+		t.Errorf("expected unread_count=0, got %v", resp["unread_count"])
+	}
+}
+
+func TestNotificationHandler_List_WithNotifications(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{
+		TaskID:  "task-1",
+		Type:    "task.completed",
+		Message: "Task completed: Test",
+		Read:    false,
+	})
+	database.CreateNotification(&models.Notification{
+		TaskID:  "task-2",
+		Type:    "task.failed",
+		Message: "Task failed: Oops",
+		Read:    true,
+	})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/notifications", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	notifs := resp["notifications"].([]interface{})
+	if len(notifs) != 2 {
+		t.Errorf("expected 2 notifications, got %d", len(notifs))
+	}
+	if resp["unread_count"].(float64) != 1 {
+		t.Errorf("expected unread_count=1, got %v", resp["unread_count"])
+	}
+}
+
+func TestNotificationHandler_MarkRead(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{
+		TaskID:  "task-1",
+		Type:    "task.completed",
+		Message: "Done",
+		Read:    false,
+	})
+	notifs, _ := database.ListNotifications(10)
+	unreadID := notifs[0].ID
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("PATCH", "/notifications/"+unreadID+"/read", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestNotificationHandler_MarkAllRead(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	database.CreateNotification(&models.Notification{TaskID: "t2", Type: "t", Message: "m2", Read: false})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("POST", "/notifications/read", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+	count, _ := database.GetUnreadNotificationCount()
+	if count != 0 {
+		t.Errorf("expected 0 unread after mark-all-read, got %d", count)
+	}
+}
+
+func TestNotificationHandler_Clear(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationHandler(database)
+	database.CreateNotification(&models.Notification{TaskID: "t1", Type: "t", Message: "m1", Read: false})
+	database.CreateNotification(&models.Notification{TaskID: "t2", Type: "t", Message: "m2", Read: false})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/notifications", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+	count, _ := database.GetUnreadNotificationCount()
+	if count != 0 {
+		t.Errorf("expected 0 notifications after clear, got %d", count)
+	}
+}
+
+// --- AgentHandler tests ---
+
+func newTestAgentRouter(t *testing.T) *mux.Router {
+	database := setupTaskTestDB(t)
+	handler := NewAgentHandler(database)
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router
+}
+
+func TestAgentHandler_List_Empty(t *testing.T) {
+	router := newTestAgentRouter(t)
+
+	req := httptest.NewRequest("GET", "/agents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	agents := resp["agents"].([]interface{})
+	if len(agents) != 0 {
+		t.Errorf("expected 0 agents, got %d", len(agents))
+	}
+}
+
+func TestAgentHandler_Overview_Empty(t *testing.T) {
+	router := newTestAgentRouter(t)
+
+	req := httptest.NewRequest("GET", "/agents/overview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	agents := resp["agents"].([]interface{})
+	if len(agents) != 0 {
+		t.Errorf("expected 0 agents in overview, got %d", len(agents))
+	}
+}
+
+func TestAgentHandler_Overview_WithTasks(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAgentHandler(database)
+	p := &models.Project{Name: "proj"}
+	database.CreateProject(p)
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 1", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignee: "agent-a"})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 2", Status: models.TaskStatusCompleted, Priority: models.PriorityMedium, Assignee: "agent-a"})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 3", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "agent-b"})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/agents/overview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	agents := resp["agents"].([]interface{})
+	if len(agents) != 2 {
+		t.Errorf("expected 2 agents, got %d", len(agents))
+	}
+}
+
+// --- WebhookHandler tests ---
+
+func newTestWebhookRouter(t *testing.T) *mux.Router {
+	database := setupTaskTestDB(t)
+	handler := NewWebhookHandler(database)
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router
+}
+
+func TestWebhookHandler_List_Empty(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	req := httptest.NewRequest("GET", "/webhooks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	hooks := resp["webhooks"].([]interface{})
+	if len(hooks) != 0 {
+		t.Errorf("expected 0 webhooks, got %d", len(hooks))
+	}
+}
+
+func TestWebhookHandler_Create_Success(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	body := newJSONBody(map[string]interface{}{"url": "https://example.com/hook", "events": "task.completed", "active": true})
+	req := httptest.NewRequest("POST", "/webhooks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var wh models.WebhookConfig
+	json.NewDecoder(w.Body).Decode(&wh)
+	if wh.URL != "https://example.com/hook" {
+		t.Errorf("expected URL 'https://example.com/hook', got %q", wh.URL)
+	}
+	if wh.Events != "task.completed" {
+		t.Errorf("expected events 'task.completed', got %q", wh.Events)
+	}
+}
+
+func TestWebhookHandler_Create_DefaultEvents(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	body := newJSONBody(map[string]string{"url": "https://example.com/hook"})
+	req := httptest.NewRequest("POST", "/webhooks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var wh models.WebhookConfig
+	json.NewDecoder(w.Body).Decode(&wh)
+	if wh.Events != "task.*" {
+		t.Errorf("expected default events 'task.*', got %q", wh.Events)
+	}
+}
+
+func TestWebhookHandler_Create_URLRequired(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	body := newJSONBody(map[string]string{"url": ""})
+	req := httptest.NewRequest("POST", "/webhooks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestWebhookHandler_Create_InvalidJSON(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	req := httptest.NewRequest("POST", "/webhooks", bytes.NewBufferString(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestWebhookHandler_Delete_Success(t *testing.T) {
+	router := newTestWebhookRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"url": "https://example.com/hook"})
+	req := httptest.NewRequest("POST", "/webhooks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var wh models.WebhookConfig
+	json.NewDecoder(w.Body).Decode(&wh)
+
+	// Delete
+	req = httptest.NewRequest("DELETE", "/webhooks/"+wh.ID, nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+}
+
+// --- NotificationConfigHandler tests ---
+
+func newTestNotifConfigRouter(t *testing.T) *mux.Router {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationConfigHandler(database)
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router
+}
+
+func TestNotificationConfigHandler_List(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	req := httptest.NewRequest("GET", "/notifications/configs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	cfgs := resp["configs"].([]interface{})
+	if len(cfgs) != 2 {
+		t.Errorf("expected 2 configs (macos+email from migration seed), got %d", len(cfgs))
+	}
+}
+
+func TestNotificationConfigHandler_Get_NotFound(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	req := httptest.NewRequest("GET", "/notifications/configs/nonexistent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestNotificationConfigHandler_Get_Success(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewNotificationConfigHandler(database)
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "macos",
+		Enabled: true,
+		Config:  map[string]interface{}{"enabled": true},
+	})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/notifications/configs/macos", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var cfg models.NotificationConfig
+	json.NewDecoder(w.Body).Decode(&cfg)
+	if cfg.Type != "macos" {
+		t.Errorf("expected type 'macos', got %q", cfg.Type)
+	}
+}
+
+func TestNotificationConfigHandler_Upsert_Success(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	body := newJSONBody(map[string]interface{}{
+		"type":    "email",
+		"enabled": true,
+		"config":  map[string]interface{}{"smtp_host": "smtp.example.com"},
+	})
+	req := httptest.NewRequest("POST", "/notifications/configs", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationConfigHandler_Upsert_InvalidJSON(t *testing.T) {
+	router := newTestNotifConfigRouter(t)
+
+	req := httptest.NewRequest("POST", "/notifications/configs", bytes.NewBufferString(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
 	}
 }

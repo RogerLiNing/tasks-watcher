@@ -81,7 +81,8 @@ func (h *NotificationConfigHandler) Upsert(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *NotificationConfigHandler) Register(router *mux.Router) {
-	router.HandleFunc("/notifications/configs", h.List).Methods("GET")
-	router.HandleFunc("/notifications/configs/{type}", h.Get).Methods("GET")
-	router.HandleFunc("/notifications/configs", h.Upsert).Methods("POST")
+	r := router.PathPrefix("/notifications/configs").Subrouter()
+	r.HandleFunc("", h.List).Methods("GET")
+	r.HandleFunc("", h.Upsert).Methods("POST")
+	r.HandleFunc("/{type}", h.Get).Methods("GET")
 }
