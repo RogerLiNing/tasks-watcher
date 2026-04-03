@@ -43,6 +43,11 @@ func newTestTaskRouter(t *testing.T) (*mux.Router, *db.DB) {
 	return router, database
 }
 
+func newJSONBody(v interface{}) *bytes.Buffer {
+	data, _ := json.Marshal(v)
+	return bytes.NewBuffer(data)
+}
+
 func TestTaskHandler_List(t *testing.T) {
 	router, _ := newTestTaskRouter(t)
 
@@ -697,5 +702,524 @@ func TestAuthMiddleware_QueryParamAuth(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 with api_key query param, got %d", w.Code)
+	}
+}
+
+// --- ProjectHandler tests ---
+
+func newTestProjectRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	handler := NewProjectHandler(database, sse)
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router, database
+}
+
+func TestProjectHandler_List(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	req := httptest.NewRequest("GET", "/projects", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	projects, ok := resp["projects"].([]interface{})
+	if !ok {
+		t.Fatalf("expected projects array, got %T", resp["projects"])
+	}
+	if len(projects) != 0 {
+		t.Errorf("expected 0 projects, got %d", len(projects))
+	}
+}
+
+func TestProjectHandler_Create_NameRequired(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	body := bytes.NewBufferString(`{}`)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_Create_Success(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	payload := map[string]string{"name": "my-project", "description": "A test project"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var proj models.Project
+	if err := json.NewDecoder(w.Body).Decode(&proj); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if proj.Name != "my-project" {
+		t.Errorf("expected name 'my-project', got %q", proj.Name)
+	}
+	if proj.ID == "" {
+		t.Error("expected non-empty ID")
+	}
+}
+
+func TestProjectHandler_Create_InvalidJSON(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	body := bytes.NewBufferString(`not json`)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_Get_NotFound(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	req := httptest.NewRequest("GET", "/projects/nonexistent-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_Get_Success(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	// Create first
+	payload := map[string]string{"name": "get-test-project"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.Project
+	json.NewDecoder(w.Body).Decode(&created)
+
+	req = httptest.NewRequest("GET", "/projects/"+created.ID, nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var fetched models.Project
+	json.NewDecoder(w.Body).Decode(&fetched)
+	if fetched.ID != created.ID {
+		t.Errorf("expected ID %s, got %s", created.ID, fetched.ID)
+	}
+}
+
+func TestProjectHandler_Update_Success(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"name": "orig-name"})
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.Project
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Update
+	updateBody := newJSONBody(map[string]string{"name": "new-name", "description": "updated desc"})
+	req = httptest.NewRequest("PUT", "/projects/"+created.ID, updateBody)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var updated models.Project
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Name != "new-name" {
+		t.Errorf("expected name 'new-name', got %q", updated.Name)
+	}
+	if updated.Description != "updated desc" {
+		t.Errorf("expected description 'updated desc', got %q", updated.Description)
+	}
+}
+
+func TestProjectHandler_Update_NotFound(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	body := newJSONBody(map[string]string{"name": "some-name"})
+	req := httptest.NewRequest("PUT", "/projects/nonexistent-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_Delete_Success(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"name": "to-delete"})
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.Project
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Delete
+	req = httptest.NewRequest("DELETE", "/projects/"+created.ID, nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+
+	// Verify it's gone
+	req = httptest.NewRequest("GET", "/projects/"+created.ID, nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 after delete, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_GetOrCreateByRepo_MissingParam(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	req := httptest.NewRequest("GET", "/projects/by-repo", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestProjectHandler_GetOrCreateByRepo_Success(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	req := httptest.NewRequest("GET", "/projects/by-repo?repo_path=/tmp/test-repo", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var proj models.Project
+	json.NewDecoder(w.Body).Decode(&proj)
+	if proj.RepoPath != "/tmp/test-repo" {
+		t.Errorf("expected repo_path '/tmp/test-repo', got %q", proj.RepoPath)
+	}
+}
+
+func TestProjectHandler_List_AfterCreate(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	// Create two projects
+	for _, name := range []string{"proj-a", "proj-b"} {
+		body := newJSONBody(map[string]string{"name": name})
+		req := httptest.NewRequest("POST", "/projects", body)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create failed for %s: %d", name, w.Code)
+		}
+	}
+
+	// List
+	req := httptest.NewRequest("GET", "/projects", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	projects := resp["projects"].([]interface{})
+	if len(projects) != 2 {
+		t.Errorf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+// --- ColumnHandler tests ---
+
+func newTestColumnRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	handler := NewColumnHandler(database, sse)
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router, database
+}
+
+func TestColumnHandler_List_Empty(t *testing.T) {
+	router, database := newTestColumnRouter(t)
+
+	// Delete any default columns seeded by migration 005
+	cols, _ := database.ListColumns()
+	for _, c := range cols {
+		database.DeleteColumn(c.ID)
+	}
+
+	req := httptest.NewRequest("GET", "/columns", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	colsVal := resp["columns"]
+	if colsVal == nil {
+		colsVal = []interface{}{}
+	}
+	if cols := colsVal.([]interface{}); len(cols) != 0 {
+		t.Errorf("expected 0 columns, got %d", len(cols))
+	}
+}
+
+func TestColumnHandler_Create_LabelRequired(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	body := bytes.NewBufferString(`{}`)
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Create_Success(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	payload := map[string]interface{}{"label": "In Review", "color": "#ff0000", "position": 0}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var col models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&col)
+	if col.Label != "In Review" {
+		t.Errorf("expected label 'In Review', got %q", col.Label)
+	}
+	if col.Color != "#ff0000" {
+		t.Errorf("expected color '#ff0000', got %q", col.Color)
+	}
+	if col.ID == "" {
+		t.Error("expected non-empty ID")
+	}
+}
+
+func TestColumnHandler_Create_InvalidJSON(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	body := bytes.NewBufferString(`{invalid}`)
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Create_DefaultColor(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	// Omit color — should default to #86868b
+	payload := map[string]string{"label": "Backlog"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var col models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&col)
+	if col.Color != "#86868b" {
+		t.Errorf("expected default color '#86868b', got %q", col.Color)
+	}
+}
+
+func TestColumnHandler_Create_KeyDeduplication(t *testing.T) {
+	router, database := newTestColumnRouter(t)
+
+	// Delete default columns seeded by migration so we test in isolation
+	cols, _ := database.ListColumns()
+	for _, c := range cols {
+		database.DeleteColumn(c.ID)
+	}
+
+	// Create first column — auto-generates key from label
+	payload := map[string]string{"label": "In Progress"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var first models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&first)
+
+	// Create second column with same label — key should be deduplicated
+	req = httptest.NewRequest("POST", "/columns", newJSONBody(payload))
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var second models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&second)
+
+	if first.Key == second.Key {
+		t.Errorf("expected different keys, got same: %q", first.Key)
+	}
+	if second.Key != "in_progress_2" {
+		t.Errorf("expected key 'in_progress_2', got %q", second.Key)
+	}
+}
+
+func TestColumnHandler_Get_NotFound(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	req := httptest.NewRequest("PUT", "/columns/nonexistent-id", newJSONBody(map[string]string{"label": "x"}))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Update_Success(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"label": "To Do", "color": "#0000ff"})
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Update
+	updateBody := newJSONBody(map[string]interface{}{"label": "Done", "color": "#00ff00", "position": 5})
+	req = httptest.NewRequest("PUT", "/columns/"+created.ID, updateBody)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var updated models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Label != "Done" {
+		t.Errorf("expected label 'Done', got %q", updated.Label)
+	}
+	if updated.Color != "#00ff00" {
+		t.Errorf("expected color '#00ff00', got %q", updated.Color)
+	}
+	if updated.Position != 5 {
+		t.Errorf("expected position 5, got %d", updated.Position)
+	}
+}
+
+func TestColumnHandler_Update_NotFound(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	body := newJSONBody(map[string]string{"label": "x"})
+	req := httptest.NewRequest("PUT", "/columns/nonexistent-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Delete_Success(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"label": "temp-col"})
+	req := httptest.NewRequest("POST", "/columns", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.TaskColumn
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Delete
+	req = httptest.NewRequest("DELETE", "/columns/"+created.ID, nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+
+	// Verify 404
+	req = httptest.NewRequest("PUT", "/columns/"+created.ID, newJSONBody(map[string]string{"label": "x"}))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 after delete, got %d", w.Code)
+	}
+}
+
+func TestColumnHandler_Delete_NotFound(t *testing.T) {
+	router, _ := newTestColumnRouter(t)
+
+	req := httptest.NewRequest("DELETE", "/columns/nonexistent-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+// --- slugify tests ---
+
+func TestSlugify(t *testing.T) {
+	cases := []struct {
+		label string
+		want  string
+	}{
+		{"In Progress", "in_progress"},
+		{"To-Do List!", "to_do_list"},
+		{"  spaces  ", "spaces"},
+		{"ALL_CAPS", "all_caps"},
+		{"hello123world", "hello123world"},
+		{"Mixed!@#$%Case", "mixed_case"},
+		{"CJK任务", "cjk"},
+		{"日本語テスト", "col"},
+		{"한국어", "col"},
+		{"emoji 🚀 test", "emoji_test"},
+		{"", "col"},
+		{"   ", "col"},
+		{"---dashes---", "dashes"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			got := slugify(tc.label)
+			if got != tc.want {
+				t.Errorf("slugify(%q) = %q, want %q", tc.label, got, tc.want)
+			}
+		})
 	}
 }
