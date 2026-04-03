@@ -3361,3 +3361,128 @@ func TestDepHandler_RemoveBlocker_DBError(t *testing.T) {
 		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// --- Additional coverage for low-covered functions ---
+
+func TestProjectHandler_Create_WithRepoPath(t *testing.T) {
+	// Create project with repo_path set; should call UpdateProject
+	router, _ := newTestProjectRouter(t)
+
+	payload := map[string]string{"name": "repo-project", "repo_path": "/Users/test/repo"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var proj models.Project
+	if err := json.NewDecoder(w.Body).Decode(&proj); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if proj.RepoPath != "/Users/test/repo" {
+		t.Errorf("expected repo_path '/Users/test/repo', got %q", proj.RepoPath)
+	}
+}
+
+func TestProjectHandler_Create_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"name": "any-name"})
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_WithPosition_Link(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "pos-parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "pos-child")
+
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"], "position": 2})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_WithPosition_CreateNew(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "pos-parent-2")
+	pid := parent["id"].(string)
+
+	body := newJSONBody(map[string]interface{}{"title": "positioned-subtask", "position": 1})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_GetParent_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewSubtaskHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id/parent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestColumnHandler_Delete_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewColumnHandler(database, sse)
+	// Create a real column so GetColumn succeeds, then close before Delete is called
+	database.CreateColumn(&models.TaskColumn{Key: "del-col", Label: "Delete Me", Color: "#fff"})
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/columns/del-col", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_GetOrCreateByRepo_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/projects/by-repo?repo_path=/test/repo", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
