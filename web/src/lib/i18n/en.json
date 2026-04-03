@@ -43,7 +43,8 @@
     "description": "Description",
     "repoPath": "Repo path",
     "repoPathPlaceholder": "/path/to/your/git/repo",
-    "deleteProject": "Delete project"
+    "deleteProject": "Delete project",
+    "deleteProjectConfirm": "Delete project \"{name}\"? All tasks in this project will also be deleted."
   },
   "quickCreate": {
     "placeholder": "Add a task... (press Enter)",
@@ -59,7 +60,8 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Mark all read",
-    "empty": "No notifications yet"
+    "empty": "No notifications yet",
+    "close": "Close notifications"
   },
   "taskCard": {
     "modeSequential": "Sequential",
@@ -112,7 +114,11 @@
     "sequentialOrder": "🔗 Sequential order",
     "parallelAllRun": "⚡ Parallel — all run independently",
     "titlePlaceholder": "Subtask title...",
-    "descPlaceholder": "Description (optional)"
+    "descPlaceholder": "Description (optional)",
+    "partOf": "Part of:",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeFromSubtasks": "Remove from subtasks"
   },
   "columnSettings": {
     "title": "Kanban Columns",

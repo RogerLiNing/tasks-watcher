@@ -29,7 +29,7 @@
   }
 </script>
 
-<button class="panel-backdrop" on:click={() => dispatch('close')} aria-label="Close notifications">
+<button class="panel-backdrop" on:click={() => dispatch('close')} aria-label={$t('notifications.close')}>
 </button>
 <aside class="panel">
     <div class="panel-header">

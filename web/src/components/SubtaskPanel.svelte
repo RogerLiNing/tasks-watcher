@@ -110,7 +110,7 @@
   {:else}
     {#if parent}
       <div class="parent-link">
-        <span class="parent-label">Part of:</span>
+        <span class="parent-label">{$t('subtaskPanel.partOf')}</span>
         <button class="parent-title link-btn" on:click={() => openTask(parent.id)}>{parent.title}</button>
       </div>
     {/if}
@@ -156,18 +156,18 @@
                 class="reorder-btn"
                 disabled={i === 0}
                 on:click={() => moveSubtask(s.id, 'up')}
-                title="Move up"
+                title={$t('subtaskPanel.moveUp')}
               >↑</button>
               <button
                 class="reorder-btn"
                 disabled={i === subtasks.length - 1}
                 on:click={() => moveSubtask(s.id, 'down')}
-                title="Move down"
+                title={$t('subtaskPanel.moveDown')}
               >↓</button>
             {/if}
             <span class="subtask-status" data-status={s.status}></span>
             <button class="subtask-title link-btn" on:click={() => openTask(s.id)}>{s.title}</button>
-            <button class="remove-btn" on:click={() => removeSubtask(s.id)} title="Remove from subtasks">×</button>
+            <button class="remove-btn" on:click={() => removeSubtask(s.id)} title={$t('subtaskPanel.removeFromSubtasks')}>×</button>
           </div>
         {/each}
       {/if}

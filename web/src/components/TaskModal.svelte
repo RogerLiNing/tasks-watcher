@@ -132,11 +132,11 @@
             </label>
             <label class="mode-radio">
               <input type="radio" bind:group={editTaskMode} value="sequential" />
-              🔗 Sequential
+              {$t('taskModal.sequential')}
             </label>
             <label class="mode-radio">
               <input type="radio" bind:group={editTaskMode} value="parallel" />
-              ⚡ Parallel
+              {$t('taskModal.parallel')}
             </label>
           </div>
           <div class="edit-actions">

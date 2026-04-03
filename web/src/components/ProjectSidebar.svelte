@@ -69,7 +69,7 @@
   }
 
   async function deleteProject(project) {
-    if (!confirm(`Delete project "${project.name}"? All tasks in this project will also be deleted.`)) return;
+    if (!confirm($t('sidebar.deleteProjectConfirm', { name: project.name }))) return;
     dispatch('deleteProject', project);
   }
 </script>

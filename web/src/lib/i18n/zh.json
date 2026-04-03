@@ -43,7 +43,8 @@
     "description": "描述",
     "repoPath": "仓库路径",
     "repoPathPlaceholder": "/path/to/your/git/repo",
-    "deleteProject": "删除项目"
+    "deleteProject": "删除项目",
+    "deleteProjectConfirm": "删除项目「{name}」？该项目中的所有任务也将被删除。"
   },
   "quickCreate": {
     "placeholder": "添加任务... (按回车)",
@@ -59,7 +60,8 @@
   "notifications": {
     "title": "通知",
     "markAllRead": "全部已读",
-    "empty": "暂无通知"
+    "empty": "暂无通知",
+    "close": "关闭通知"
   },
   "taskCard": {
     "modeSequential": "顺序",
@@ -112,7 +114,11 @@
     "sequentialOrder": "🔗 顺序执行",
     "parallelAllRun": "⚡ 并行执行 — 所有子任务独立运行",
     "titlePlaceholder": "子任务标题...",
-    "descPlaceholder": "描述（可选）"
+    "descPlaceholder": "描述（可选）",
+    "partOf": "属于：",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeFromSubtasks": "从子任务中移除"
   },
   "columnSettings": {
     "title": "看板列",
