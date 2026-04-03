@@ -177,17 +177,28 @@ func taskListCmd() *cobra.Command {
 				return nil
 			}
 
-			fmt.Printf("%-12s %-10s %-8s %s\n", "STATUS", "PRIORITY", "ASSIGNEE", "TITLE")
+			fmt.Printf("%-12s %-10s %-8s %-12s %s\n", "STATUS", "PRIORITY", "ASSIGNEE", "MODE/SOURCE", "TITLE")
 			fmt.Println(strings.Repeat("-", 90))
 			for _, t := range tasks {
 				status := fmt.Sprintf("%s", t["status"])
 				priority := fmt.Sprintf("%s", t["priority"])
 				asgn := fmt.Sprintf("%s", t["assignee"])
 				title := fmt.Sprintf("%s", t["title"])
-				if len(title) > 45 {
-					title = title[:42] + "..."
+				if len(title) > 40 {
+					title = title[:37] + "..."
 				}
-				fmt.Printf("%-12s %-10s %-8s %s\n", status, priority, asgn, title)
+				modeSrc := ""
+				if m, ok := t["task_mode"].(string); ok && m != "" {
+					modeSrc = m
+				}
+				if s, ok := t["source"].(string); ok && s != "" && s != "manual" {
+					if modeSrc != "" {
+						modeSrc += " " + s
+					} else {
+						modeSrc = s
+					}
+				}
+				fmt.Printf("%-12s %-10s %-8s %-12s %s\n", status, priority, asgn, modeSrc, title)
 			}
 			return nil
 		},
@@ -298,12 +309,81 @@ func taskShowCmd() *cobra.Command {
 			if err := json.Unmarshal(resp, &task); err != nil {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
-			fmt.Printf("Title:       %s\n", task["title"])
-			fmt.Printf("ID:          %s\n", task["id"])
-			fmt.Printf("Project ID:  %s\n", task["project_id"])
-			fmt.Printf("Status:      %s\n", task["status"])
-			fmt.Printf("Priority:    %s\n", task["priority"])
-			fmt.Printf("Assignee:    %s\n", task["assignee"])
+
+			// Header
+			title := task["title"]
+			fmt.Printf("=== %s ===\n", title)
+			fmt.Printf("ID:        %s\n", task["id"])
+			if p, ok := task["project_id"].(string); ok && p != "" {
+				fmt.Printf("Project:   %s\n", p)
+			}
+			fmt.Printf("Status:    %s\n", task["status"])
+			fmt.Printf("Priority:  %s\n", task["priority"])
+			if a, ok := task["assignee"].(string); ok && a != "" {
+				fmt.Printf("Assignee:  %s\n", a)
+			}
+			if s, ok := task["source"].(string); ok && s != "" {
+				fmt.Printf("Source:    %s\n", s)
+			}
+			if m, ok := task["task_mode"].(string); ok && m != "" {
+				fmt.Printf("Mode:      %s\n", m)
+			}
+			if desc, ok := task["description"].(string); ok && desc != "" {
+				if len(desc) > 200 {
+					desc = desc[:197] + "..."
+				}
+				fmt.Printf("Desc:      %s\n", desc)
+			}
+			if errMsg, ok := task["error_message"].(string); ok && errMsg != "" {
+				fmt.Printf("Error:     %s\n", errMsg)
+			}
+
+			// Subtasks
+			subResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/subtasks", nil)
+			var subResult map[string][]map[string]interface{}
+			if json.Unmarshal(subResp, &subResult) == nil {
+				subtasks := subResult["subtasks"]
+				fmt.Printf("\nSubtasks (%d):\n", len(subtasks))
+				if len(subtasks) == 0 {
+					fmt.Println("  (none)")
+				}
+				for _, s := range subtasks {
+					pos := 0
+					if p, ok := s["position"].(float64); ok {
+						pos = int(p)
+					}
+					fmt.Printf("  [%d] [%s] %s\n", pos, s["status"], s["title"])
+				}
+			}
+
+			// Blockers
+			blockResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/dependencies", nil)
+			var blockResult map[string][]map[string]interface{}
+			if json.Unmarshal(blockResp, &blockResult) == nil {
+				blockers := blockResult["blockers"]
+				fmt.Printf("\nBlocked by (%d):\n", len(blockers))
+				if len(blockers) == 0 {
+					fmt.Println("  (none)")
+				}
+				for _, b := range blockers {
+					fmt.Printf("  [%s] %s\n", b["status"], b["title"])
+				}
+			}
+
+			// Dependents
+			depResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/dependents", nil)
+			var depResult map[string][]map[string]interface{}
+			if json.Unmarshal(depResp, &depResult) == nil {
+				dependents := depResult["dependents"]
+				fmt.Printf("\nBlocking (%d):\n", len(dependents))
+				if len(dependents) == 0 {
+					fmt.Println("  (none)")
+				}
+				for _, d := range dependents {
+					fmt.Printf("  [%s] %s\n", d["status"], d["title"])
+				}
+			}
+
 			return nil
 		},
 	}
