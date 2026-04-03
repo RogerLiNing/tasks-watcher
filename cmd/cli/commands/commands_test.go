@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -521,5 +522,592 @@ func TestAPIRequest_ServerError(t *testing.T) {
 	_, err := apiRequest("GET", "/api/tasks", nil)
 	if err == nil {
 		t.Error("expected error for 500 response")
+	}
+}
+
+// --- Project command tests ---
+
+func setupTestServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+}
+
+func TestProjectCreate_MissingName(t *testing.T) {
+	cmd := projectCreateCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing name")
+	}
+}
+
+func TestProjectCreate_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/projects" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-id","name":"my-proj"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectCreateCmd()
+	cmd.SetArgs([]string{"--name", "my-proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestProjectUpdate_NoFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not call API when no fields provided")
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectUpdateCmd()
+	cmd.SetArgs([]string{"proj-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for no update fields")
+	}
+}
+
+func TestProjectUpdate_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/projects/proj-id" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-id","name":"updated"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectUpdateCmd()
+	cmd.SetArgs([]string{"proj-id", "--name", "updated"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestProjectList_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/projects" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"projects":[]}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectListCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestProjectDelete_Success(t *testing.T) {
+	var deletedID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deletedID = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectDeleteCmd()
+	cmd.SetArgs([]string{"proj-id-xxx"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if deletedID != "/api/projects/proj-id-xxx" {
+		t.Errorf("expected /api/projects/proj-id-xxx, got %s", deletedID)
+	}
+}
+
+// --- Dependency command tests ---
+
+func TestDepAdd_MissingTaskID(t *testing.T) {
+	cmd := taskDepAddCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestDepAdd_MissingBlockerID(t *testing.T) {
+	cmd := taskDepAddCmd()
+	cmd.SetArgs([]string{"--task-id", "task-1"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing blocker id")
+	}
+}
+
+func TestDepAdd_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/task-1/dependencies" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"blocker_id":"blocker-1"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepAddCmd()
+	cmd.SetArgs([]string{"--task-id", "task-1", "--on", "blocker-1"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestDepRemove_MissingTaskID(t *testing.T) {
+	cmd := taskDepRemoveCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestDepRemove_Success(t *testing.T) {
+	var deletedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deletedPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepRemoveCmd()
+	cmd.SetArgs([]string{"--task-id", "t1", "--remove", "b1"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if deletedPath != "/api/tasks/t1/dependencies/b1" {
+		t.Errorf("expected /api/tasks/t1/dependencies/b1, got %s", deletedPath)
+	}
+}
+
+func TestDepList_MissingTaskID(t *testing.T) {
+	cmd := taskDepListCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestDepList_Success(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/dependencies") {
+			w.Write([]byte(`{"blockers":[]}`))
+		} else {
+			w.Write([]byte(`{"dependents":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepListCmd()
+	cmd.SetArgs([]string{"--task-id", "task-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("expected 2 API calls, got %d", len(paths))
+	}
+}
+
+func TestDepCheck_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/check-id/can-start" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"can_start":true,"blockers":[]}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepCheckCmd()
+	cmd.SetArgs([]string{"--task-id", "check-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// --- Subtask command tests ---
+
+func TestSubtaskCreate_MissingTaskID(t *testing.T) {
+	cmd := taskSubtaskCreateCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestSubtaskCreate_MissingTitle(t *testing.T) {
+	cmd := taskSubtaskCreateCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing title")
+	}
+}
+
+func TestSubtaskCreate_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/parent-id/subtasks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"task":{"id":"child-id","title":"child-task"}}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskCreateCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id", "--title", "child-task"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSubtaskLink_MissingTaskID(t *testing.T) {
+	cmd := taskSubtaskLinkCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestSubtaskLink_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/parent-id/subtasks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"task":{"id":"child-id"}}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskLinkCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id", "--add", "child-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSubtaskList_MissingTaskID(t *testing.T) {
+	cmd := taskSubtaskListCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestSubtaskList_Success(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/tasks/parent-id/subtasks" {
+			w.Write([]byte(`{"subtasks":[]}`))
+		} else {
+			w.Write([]byte(`{"id":"parent-id","title":"Parent Task"}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskListCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("expected 2 API calls, got %d: %v", len(paths), paths)
+	}
+}
+
+func TestSubtaskRemove_MissingTaskID(t *testing.T) {
+	cmd := taskSubtaskRemoveCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestSubtaskRemove_Success(t *testing.T) {
+	var removedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		removedPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskRemoveCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id", "--remove", "child-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if removedPath != "/api/tasks/parent-id/subtasks/child-id" {
+		t.Errorf("expected /api/tasks/parent-id/subtasks/child-id, got %s", removedPath)
+	}
+}
+
+func TestSubtaskReorder_MissingTaskID(t *testing.T) {
+	cmd := taskSubtaskReorderCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for missing task-id")
+	}
+}
+
+func TestSubtaskReorder_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/parent-id/subtasks/child-id/position" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskReorderCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-id", "--child-id", "child-id", "--position", "2"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// --- Agents command tests ---
+
+func TestAgentsOverview_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"agents":[{"name":"claude-code","active_tasks":1,"pending_tasks":2,"completed_tasks":5,"failed_tasks":0,"total_tasks":8}]}`))
+			return
+		}
+		if r.URL.Path == "/api/tasks" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"tasks":[],"total":0}`))
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentsOverview_NoAgents(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"agents":[]}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
