@@ -15,9 +15,9 @@ import (
 
 // Client wraps the Tasks Watcher HTTP API
 type Client struct {
-	baseURL   string
-	apiKey    string
-	httpClient *http.Client
+	BaseURL    string
+	APIKey     string
+	HTTPClient *http.Client
 }
 
 // Task and Project types
@@ -67,9 +67,9 @@ func New() (*Client, error) {
 	}
 
 	return &Client{
-		baseURL:    serverURL,
-		apiKey:     apiKey,
-		httpClient: &http.Client{},
+		BaseURL:    serverURL,
+		APIKey:     apiKey,
+		HTTPClient: &http.Client{},
 	}, nil
 }
 
@@ -84,17 +84,17 @@ func (c *Client) do(method, path string, body interface{}) ([]byte, int, error) 
 		bodyReader = bytes.NewReader(data)
 	}
 
-	url := c.baseURL + path
+	url := c.BaseURL + path
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("connection failed: %w (is the server running at %s?)", err, c.baseURL)
+		return nil, 0, fmt.Errorf("connection failed: %w (is the server running at %s?)", err, c.BaseURL)
 	}
 	defer resp.Body.Close()
 
@@ -882,13 +882,13 @@ func detectGitRepo() string {
 // getOrCreateProjectByRepo calls GET /projects/by-repo?repo_path=... to find or create
 // the project for the given repository path.
 func (c *Client) getOrCreateProjectByRepo(repoPath string) (string, error) {
-	url := c.baseURL + "/api/projects/by-repo?repo_path=" + repoPath
+	url := c.BaseURL + "/api/projects/by-repo?repo_path=" + repoPath
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	resp, err := c.httpClient.Do(req)
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to look up project: %w", err)
 	}

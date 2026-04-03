@@ -74,9 +74,9 @@ func TestDetectGitRepo(t *testing.T) {
 
 func newTestClient(serverURL string) *Client {
 	return &Client{
-		baseURL:    serverURL,
-		apiKey:     "test-key",
-		httpClient: &http.Client{},
+		BaseURL:    serverURL,
+		APIKey:     "test-key",
+		HTTPClient: &http.Client{},
 	}
 }
 
