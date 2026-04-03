@@ -20,19 +20,22 @@ import (
 func TestSendWebhooks_DeliversPayload(t *testing.T) {
 	var receivedBody map[string]interface{}
 	var mu sync.Mutex
+	var serverErrs []string // collected from the handler goroutine
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			t.Errorf("expected POST, got %s", r.Method)
+			serverErrs = append(serverErrs, "expected POST, got "+r.Method)
 		}
 		if r.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
+			serverErrs = append(serverErrs, "expected application/json, got "+r.Header.Get("Content-Type"))
 		}
 		if r.Header.Get("X-Tasks-Watcher-Event") != "task.completed" {
-			t.Errorf("expected X-Tasks-Watcher-Event: task.completed, got %s", r.Header.Get("X-Tasks-Watcher-Event"))
+			serverErrs = append(serverErrs, "expected X-Tasks-Watcher-Event: task.completed, got "+r.Header.Get("X-Tasks-Watcher-Event"))
 		}
 		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
 		json.Unmarshal(body, &receivedBody)
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -55,6 +58,9 @@ func TestSendWebhooks_DeliversPayload(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
+	for _, err := range serverErrs {
+		t.Errorf("server handler: %s", err)
+	}
 	if receivedBody == nil {
 		t.Error("expected webhook to receive a payload")
 	} else if receivedBody["event"] != "task.completed" {
@@ -64,9 +70,12 @@ func TestSendWebhooks_DeliversPayload(t *testing.T) {
 
 // Verify sendWebhooks skips inactive webhooks
 func TestSendWebhooks_SkipsInactive(t *testing.T) {
+	var mu sync.Mutex
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		calls++
+		mu.Unlock()
 	}))
 	defer server.Close()
 
@@ -87,6 +96,8 @@ func TestSendWebhooks_SkipsInactive(t *testing.T) {
 	// Allow async goroutine to finish
 	// Since sendWebhooks runs each webhook in a goroutine, give it a moment
 	// Inactive webhook should be skipped
+	mu.Lock()
+	defer mu.Unlock()
 	if calls != 0 {
 		t.Errorf("expected 0 calls with inactive webhook, got %d", calls)
 	}

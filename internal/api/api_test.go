@@ -635,6 +635,164 @@ func TestTaskHandler_Heartbeat_NotFound(t *testing.T) {
 	}
 }
 
+// --- propagateToParent tests ---
+
+// newTestTaskSubtaskRouter creates a router with both Task and Subtask handlers on the same DB.
+func newTestTaskSubtaskRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	taskHandler := NewTaskHandler(database, sse, nil)
+	subtaskHandler := NewSubtaskHandler(database, sse)
+
+	router := mux.NewRouter()
+	taskHandler.Register(router)
+	subtaskHandler.Register(router)
+	return router, database
+}
+
+// createTaskViaRouter creates a task via the REST API and returns the decoded Task.
+func createTaskViaRouter(t *testing.T, router *mux.Router, title string) models.Task {
+	req := httptest.NewRequest("POST", "/tasks", bytes.NewBufferString(
+		`{"title": "`+title+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	return task
+}
+
+// addSubtaskViaRouter links child as a subtask of parent via the REST API.
+func addSubtaskViaRouter(t *testing.T, router *mux.Router, parentID, childID string) {
+	req := httptest.NewRequest("POST", "/tasks/"+parentID+"/subtasks",
+		bytes.NewBufferString(`{"child_id":"`+childID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+}
+
+// updateTaskStatusViaRouter updates a task's status via PATCH.
+func updateTaskStatusViaRouter(t *testing.T, router *mux.Router, taskID, status string) models.Task {
+	req := httptest.NewRequest("PATCH", "/tasks/"+taskID+"/status",
+		bytes.NewBufferString(`{"status":"`+status+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	return task
+}
+
+// updateTaskViaRouter updates task fields via PUT.
+func updateTaskViaRouter(t *testing.T, router *mux.Router, taskID string, body string) models.Task {
+	req := httptest.NewRequest("PUT", "/tasks/"+taskID,
+		bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	return task
+}
+
+// getTaskViaRouter fetches a task by ID via the REST API.
+func getTaskViaRouter(t *testing.T, router *mux.Router, taskID string) models.Task {
+	req := httptest.NewRequest("GET", "/tasks/"+taskID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	return task
+}
+
+func TestPropagateToParent_ChildStarts_AutoStartsParent(t *testing.T) {
+	router, _ := newTestTaskSubtaskRouter(t)
+
+	// Create parent (pending by default) and child task.
+	parent := createTaskViaRouter(t, router, "Parent Task")
+	child := createTaskViaRouter(t, router, "Child Task")
+	addSubtaskViaRouter(t, router, parent.ID, child.ID)
+
+	// Start child → parent should auto-start.
+	updated := updateTaskStatusViaRouter(t, router, child.ID, "in_progress")
+
+	// Verify child's status is in_progress.
+	if updated.Status != models.TaskStatusInProgress {
+		t.Errorf("child status: got %q, want in_progress", updated.Status)
+	}
+
+	// Verify parent was auto-started.
+	parentAfter := getTaskViaRouter(t, router, parent.ID)
+	if parentAfter.Status != models.TaskStatusInProgress {
+		t.Errorf("parent status: got %q, want in_progress (auto-started)", parentAfter.Status)
+	}
+}
+
+func TestPropagateToParent_AllChildrenComplete_AutoCompletesParent(t *testing.T) {
+	router, _ := newTestTaskSubtaskRouter(t)
+
+	// Create parent (pending) and child.
+	parent := createTaskViaRouter(t, router, "Parent Task")
+	child := createTaskViaRouter(t, router, "Child Task")
+	addSubtaskViaRouter(t, router, parent.ID, child.ID)
+
+	// Start child first (pending→in_progress is required before completing).
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "in_progress")
+	// Complete child → all children terminal → parent auto-completes.
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "completed")
+
+	parentAfter := getTaskViaRouter(t, router, parent.ID)
+	if parentAfter.Status != models.TaskStatusCompleted {
+		t.Errorf("parent status: got %q, want completed (all children terminal)", parentAfter.Status)
+	}
+}
+
+func TestPropagateToParent_SequentialParent_PropagatesFailed(t *testing.T) {
+	router, _ := newTestTaskSubtaskRouter(t)
+
+	// Create parent and set it to sequential + in_progress.
+	parent := createTaskViaRouter(t, router, "Sequential Parent")
+	_ = updateTaskViaRouter(t, router, parent.ID, `{"task_mode":"sequential"}`)
+	// Start parent so it's in_progress (sequential parent must not be pending).
+	_ = updateTaskStatusViaRouter(t, router, parent.ID, "in_progress")
+
+	// Create child and link it.
+	child := createTaskViaRouter(t, router, "Child Task")
+	addSubtaskViaRouter(t, router, parent.ID, child.ID)
+	// Start child.
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "in_progress")
+
+	// Fail child → sequential parent propagates failed.
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "failed")
+
+	parentAfter := getTaskViaRouter(t, router, parent.ID)
+	if parentAfter.Status != models.TaskStatusFailed {
+		t.Errorf("parent status: got %q, want failed (sequential propagation)", parentAfter.Status)
+	}
+}
+
+func TestPropagateToParent_AlreadyTerminal_NoPropagation(t *testing.T) {
+	router, _ := newTestTaskSubtaskRouter(t)
+
+	// Create parent and complete it (must go through in_progress first).
+	parent := createTaskViaRouter(t, router, "Completed Parent")
+	_ = updateTaskStatusViaRouter(t, router, parent.ID, "in_progress")
+	_ = updateTaskStatusViaRouter(t, router, parent.ID, "completed")
+
+	// Add child but parent is already terminal → status should not change.
+	child := createTaskViaRouter(t, router, "Child Task")
+	addSubtaskViaRouter(t, router, parent.ID, child.ID)
+
+	// Start child.
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "in_progress")
+
+	// Parent should still be completed (already terminal).
+	parentAfter := getTaskViaRouter(t, router, parent.ID)
+	if parentAfter.Status != models.TaskStatusCompleted {
+		t.Errorf("parent status: got %q, want completed (already terminal)", parentAfter.Status)
+	}
+}
+
 func TestAuthMiddleware_MissingAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
