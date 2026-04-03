@@ -61,6 +61,12 @@
     "markAllRead": "全部已读",
     "empty": "暂无通知"
   },
+  "taskCard": {
+    "modeSequential": "顺序",
+    "modeParallel": "并行",
+    "modeTooltipSequential": "子任务必须按顺序完成",
+    "modeTooltipParallel": "子任务独立运行"
+  },
   "taskModal": {
     "delete": "删除",
     "edit": "编辑",
@@ -81,7 +87,9 @@
     "mode": "模式",
     "taskMode": "任务模式：",
     "sequential": "🔗 顺序执行",
-    "parallel": "⚡ 并行执行"
+    "parallel": "⚡ 并行执行",
+    "defaultMode": "默认（并行）",
+    "close": "关闭详情"
   },
   "depPanel": {
     "title": "依赖关系",
@@ -91,7 +99,8 @@
     "blocking": "阻塞以下",
     "canStart": "✓ 可以开始",
     "blocked": "🔒 已阻塞",
-    "addBlocker": "+ 添加阻塞..."
+    "addBlocker": "+ 添加阻塞...",
+    "removeBlocker": "移除阻塞"
   },
   "subtaskPanel": {
     "title": "子任务",
@@ -114,7 +123,9 @@
     "labelPlaceholder": "例如：待审核、已阻塞...",
     "color": "颜色",
     "creating": "创建中...",
-    "deleteConfirm": "删除列 \"{name}\"？该列中的任务将变为无列归属。"
+    "deleteConfirm": "删除列 \"{name}\"？该列中的任务将变为无列归属。",
+    "editColumn": "编辑列",
+    "deleteColumn": "删除列"
   },
   "common": {
     "on": "开",
@@ -158,5 +169,10 @@
   "sse": {
     "connected": "实时连接正常",
     "disconnected": "实时连接断开"
+  },
+  "settings": {
+    "tabNotifications": "通知",
+    "tabColumns": "看板列",
+    "closeSettings": "关闭设置"
   }
 }

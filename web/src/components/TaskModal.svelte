@@ -76,7 +76,7 @@
   }
 </script>
 
-<button class="modal-backdrop" on:click={() => dispatch('close')} aria-label="Close modal">
+<button class="modal-backdrop" on:click={() => dispatch('close')} aria-label={$t('taskModal.close')}>
 </button>
 <div class="modal" role="dialog">
     <div class="modal-header">
@@ -128,7 +128,7 @@
             <span class="mode-label">{$t('taskModal.taskMode')}</span>
             <label class="mode-radio">
               <input type="radio" bind:group={editTaskMode} value="" />
-              Default (parallel)
+              {$t('taskModal.defaultMode')}
             </label>
             <label class="mode-radio">
               <input type="radio" bind:group={editTaskMode} value="sequential" />
@@ -151,7 +151,7 @@
           <div class="meta-grid">
             <div class="meta-item">
               <span class="meta-label">{$t('taskModal.priority')}</span>
-              <span class="meta-value priority-badge" data-priority={task.priority}>{task.priority}</span>
+              <span class="meta-value priority-badge" data-priority={task.priority}>{$t('quickCreate.' + task.priority)}</span>
             </div>
             {#if task.assignee}
               <div class="meta-item">

@@ -92,7 +92,7 @@
     <div class="loading">{$t('common.loading')}</div>
   {:else}
     <div class="dep-group">
-      <p class="dep-label">Blocked by ({blockers.length})</p>
+      <p class="dep-label">{$t('depPanel.blockedBy')} ({blockers.length})</p>
       {#if blockers.length === 0}
         <p class="empty-hint">{$t('depPanel.noBlockers')}</p>
       {:else}
@@ -100,14 +100,14 @@
           <div class="dep-item">
             <span class="dep-status" data-status={b.status}></span>
             <button class="dep-title link-btn" on:click={() => openTask(b.id)}>{b.title}</button>
-            <button class="remove-btn" on:click={() => removeBlocker(b.id)} title="Remove blocker">×</button>
+            <button class="remove-btn" on:click={() => removeBlocker(b.id)} title={$t('depPanel.removeBlocker')}>×</button>
           </div>
         {/each}
       {/if}
     </div>
 
     <div class="dep-group">
-      <p class="dep-label">Blocking ({dependents.length})</p>
+      <p class="dep-label">{$t('depPanel.blocking')} ({dependents.length})</p>
       {#if dependents.length === 0}
         <p class="empty-hint">{$t('depPanel.noDependents')}</p>
       {:else}

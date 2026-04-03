@@ -60,12 +60,12 @@
     {/if}
     {#if task.source && task.source !== 'manual'}
       <span class="source-badge" style="background:{sourceColors[task.source] || '#86868b'}">
-        {sourceIcons[task.source] || '📌'} {task.source}
+        {sourceIcons[task.source] || '📌'} {$t('sources.' + task.source)}
       </span>
     {/if}
     {#if task.task_mode === 'sequential' || task.task_mode === 'parallel'}
-      <span class="mode-badge" style="background:{modeColors[task.task_mode] || '#86868b'}" title={task.task_mode === 'sequential' ? 'Sequential: children must complete in order' : 'Parallel: children run independently'}>
-        {modeIcons[task.task_mode] || '📌'} {task.task_mode}
+      <span class="mode-badge" style="background:{modeColors[task.task_mode] || '#86868b'}" title={task.task_mode === 'sequential' ? $t('taskCard.modeTooltipSequential') : $t('taskCard.modeTooltipParallel')}>
+        {modeIcons[task.task_mode] || '📌'} {$t('taskCard.mode' + (task.task_mode.charAt(0).toUpperCase() + task.task_mode.slice(1)))}
       </span>
     {/if}
   </div>

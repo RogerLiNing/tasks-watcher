@@ -352,19 +352,19 @@
   {/if}
 
   {#if showSettings}
-    <button class="settings-overlay" on:click={() => showSettings = false} aria-label="Close settings">
+    <button class="settings-overlay" on:click={() => showSettings = false} aria-label={$t('settings.closeSettings')}>
     </button>
     <div class="settings-panel" role="dialog">
       <div class="panel-header">
-        <h2>{$t('app.settings') || 'Settings'}</h2>
+        <h2>{$t('app.settings')}</h2>
         <button class="close-btn" on:click={() => showSettings = false}>×</button>
       </div>
       <div class="settings-tabs">
         <button class="tab-btn" class:active={settingsTab === 'notifications'} on:click={() => settingsTab = 'notifications'}>
-          Notifications
+          {$t('settings.tabNotifications')}
         </button>
         <button class="tab-btn" class:active={settingsTab === 'columns'} on:click={() => settingsTab = 'columns'}>
-          Kanban Columns
+          {$t('settings.tabColumns')}
         </button>
       </div>
       <div class="settings-body">

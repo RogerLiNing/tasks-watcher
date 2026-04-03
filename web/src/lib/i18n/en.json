@@ -61,6 +61,12 @@
     "markAllRead": "Mark all read",
     "empty": "No notifications yet"
   },
+  "taskCard": {
+    "modeSequential": "Sequential",
+    "modeParallel": "Parallel",
+    "modeTooltipSequential": "Children must complete in order",
+    "modeTooltipParallel": "Children run independently"
+  },
   "taskModal": {
     "delete": "Delete",
     "edit": "Edit",
@@ -81,7 +87,9 @@
     "mode": "Mode",
     "taskMode": "Task mode:",
     "sequential": "🔗 Sequential",
-    "parallel": "⚡ Parallel"
+    "parallel": "⚡ Parallel",
+    "defaultMode": "Default (parallel)",
+    "close": "Close modal"
   },
   "depPanel": {
     "title": "Dependencies",
@@ -91,7 +99,8 @@
     "blocking": "Blocking",
     "canStart": "✓ Can start",
     "blocked": "🔒 Blocked",
-    "addBlocker": "+ Add blocker..."
+    "addBlocker": "+ Add blocker...",
+    "removeBlocker": "Remove blocker"
   },
   "subtaskPanel": {
     "title": "Subtasks",
@@ -114,7 +123,9 @@
     "labelPlaceholder": "e.g. Review, Blocked...",
     "color": "Color",
     "creating": "Creating...",
-    "deleteConfirm": "Delete column \"{name}\"? Tasks in this column will become orphaned."
+    "deleteConfirm": "Delete column \"{name}\"? Tasks in this column will become orphaned.",
+    "editColumn": "Edit column",
+    "deleteColumn": "Delete column"
   },
   "common": {
     "on": "On",
@@ -158,5 +169,10 @@
   "sse": {
     "connected": "Real-time connected",
     "disconnected": "Real-time disconnected"
+  },
+  "settings": {
+    "tabNotifications": "Notifications",
+    "tabColumns": "Kanban Columns",
+    "closeSettings": "Close settings"
   }
 }

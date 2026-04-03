@@ -73,7 +73,7 @@
   }
 
   async function deleteCol(col) {
-    if (!confirm(`Delete column "${col.label}"? Tasks in this column will become orphaned.`)) return;
+    if (!confirm($t('columnSettings.deleteConfirm', { name: col.label }))) return;
     try {
       await api.deleteColumn(col.id);
       await load();
@@ -160,8 +160,8 @@
               <span class="col-key">{col.key}</span>
             </div>
             <div class="col-actions">
-              <button class="icon-btn" on:click={() => startEdit(col)} title="Edit">✏</button>
-              <button class="icon-btn delete" on:click={() => deleteCol(col)} title="Delete">🗑</button>
+              <button class="icon-btn" on:click={() => startEdit(col)} title={$t('columnSettings.editColumn')}>✏</button>
+              <button class="icon-btn delete" on:click={() => deleteCol(col)} title={$t('columnSettings.deleteColumn')}>🗑</button>
             </div>
           {/if}
         </div>
