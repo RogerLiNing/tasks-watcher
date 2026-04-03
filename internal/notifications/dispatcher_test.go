@@ -419,3 +419,105 @@ func TestBuildEmailMsg(t *testing.T) {
 		t.Error("missing body")
 	}
 }
+
+func TestSendChannels_WithMacOSAndEmailEnabled(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Enable macOS notification config
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "macos",
+		Enabled: true,
+		Config:  map[string]interface{}{"sound": true},
+	})
+	// Enable email notification config (no real SMTP — will fail to send, which is fine)
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config:  map[string]interface{}{"smtp_host": "invalid-host.local", "to_addresses": []interface{}{"nobody@example.com"}},
+	})
+
+	// Insert a test webhook so sendWebhooks has something to do
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    "http://localhost:99999/hook", // unreachable, will fail silently
+		Events: "task.*",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test task", Status: models.TaskStatusInProgress}
+
+	// task.started → shouldNotifyOS = true → macosNotification + sendEmail + sendWebhooks
+	msg := "Task started: Test task"
+	d.sendChannels(models.EventTaskStarted, task, msg)
+}
+
+func TestSendChannels_TaskCreatedSkipsOSNotifications(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test task", Status: models.TaskStatusPending}
+
+	// task.created → shouldNotifyOS = false → only sendWebhooks called
+	msg := "Task created: Test task"
+	d.sendChannels(models.EventTaskCreated, task, msg)
+}
+
+func TestNotify_WithTaskCompletedSavesNotification(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "notify-task-2", Title: "Completed task", Status: models.TaskStatusCompleted}
+
+	// Notify saves to DB synchronously (not in goroutine)
+	d.Notify(models.EventTaskCompleted, task)
+
+	notifs, _ := database.ListNotifications(10)
+	found := false
+	for _, n := range notifs {
+		if n.TaskID == "notify-task-2" && n.Type == models.EventTaskCompleted {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected notification to be saved for task.completed")
+	}
+}
+
+func TestSendWebhooks_WithMatchingEvent(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.failed,task.completed", // specific events
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test"}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		d.sendWebhooks("task.completed", task) // matches filter
+	}()
+	wg.Wait()
+}
+
+func TestSendWebhooks_DoesNotMatchOtherEvents(t *testing.T) {
+	event := "project.created"
+	filter := "task.failed,task.completed"
+	if matchesEvent(event, filter) {
+		t.Error("expected project.created to NOT match task filter")
+	}
+}

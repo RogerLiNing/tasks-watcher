@@ -1651,3 +1651,260 @@ func TestListColumns_WithSeededColumns(t *testing.T) {
 
 // Ensure scanTasks doesn't panic on sql.Rows error
 var _ = sql.ErrNoRows
+
+// --- GetOrCreateByRepoPath tests ---
+
+func TestGetOrCreateByRepoPath_EmptyString(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetOrCreateByRepoPath("")
+	if err != nil {
+		t.Fatalf("GetOrCreateByRepoPath failed: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil for empty path, got %+v", p)
+	}
+}
+
+func TestGetOrCreateByRepoPath_Existing(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	p, _ := db.GetProject(pid)
+	p.RepoPath = "/Users/me/src/existing"
+	db.UpdateProject(p)
+
+	found, err := db.GetOrCreateByRepoPath("/Users/me/src/existing")
+	if err != nil {
+		t.Fatalf("GetOrCreateByRepoPath failed: %v", err)
+	}
+	if found.ID != pid {
+		t.Errorf("expected existing project, got id %q", found.ID)
+	}
+}
+
+func TestGetOrCreateByRepoPath_NewCreatesProject(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetOrCreateByRepoPath("/Users/me/src/my-project")
+	if err != nil {
+		t.Fatalf("GetOrCreateByRepoPath failed: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected project to be created")
+	}
+	if p.Name != "my-project" {
+		t.Errorf("expected name 'my-project', got %q", p.Name)
+	}
+	if p.RepoPath != "/Users/me/src/my-project" {
+		t.Errorf("expected repo path, got %q", p.RepoPath)
+	}
+}
+
+func TestGetOrCreateByRepoPath_NameCollisionUpdatesExisting(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create project with name "src" but no repo_path
+	pid := makeProject(t, db, "src")
+	p, _ := db.GetProject(pid)
+	if p.RepoPath != "" {
+		t.Fatalf("expected empty repo_path")
+	}
+
+	// GetOrCreateByRepoPath with /Users/me/src
+	found, err := db.GetOrCreateByRepoPath("/Users/me/src")
+	if err != nil {
+		t.Fatalf("GetOrCreateByRepoPath failed: %v", err)
+	}
+	// Should find existing project by name and update its repo_path
+	if found.ID != pid {
+		t.Errorf("expected existing project to be updated, got id %q", found.ID)
+	}
+	if found.RepoPath != "/Users/me/src" {
+		t.Errorf("expected repo_path to be updated, got %q", found.RepoPath)
+	}
+}
+
+func TestGetOrCreateByRepoPath_DotSlash(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// filepath.Base("./") returns "." — should fall back to "default"
+	p, err := db.GetOrCreateByRepoPath("./")
+	if err != nil {
+		t.Fatalf("GetOrCreateByRepoPath failed: %v", err)
+	}
+	if p.Name != "default" {
+		t.Errorf("expected name 'default', got %q", p.Name)
+	}
+}
+
+// --- Notification Config DB tests ---
+
+func TestGetNotificationConfig_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	c, err := db.GetNotificationConfig("nonexistent")
+	if err != nil {
+		t.Fatalf("GetNotificationConfig failed: %v", err)
+	}
+	if c != nil {
+		t.Errorf("expected nil, got %+v", c)
+	}
+}
+
+func TestGetNotificationConfig_Found(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "macos",
+		Enabled: true,
+		Config:  map[string]interface{}{"sound": true},
+	})
+
+	c, err := db.GetNotificationConfig("macos")
+	if err != nil {
+		t.Fatalf("GetNotificationConfig failed: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected config, got nil")
+	}
+	if c.Type != "macos" {
+		t.Errorf("expected type 'macos', got %q", c.Type)
+	}
+	if !c.Enabled {
+		t.Error("expected enabled=true")
+	}
+}
+
+func TestListNotificationConfigs_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Migration seeds macos+email configs; confirm at least 2 exist
+	list, err := db.ListNotificationConfigs()
+	if err != nil {
+		t.Fatalf("ListNotificationConfigs failed: %v", err)
+	}
+	if len(list) < 2 {
+		t.Errorf("expected at least 2 seeded configs, got %d", len(list))
+	}
+}
+
+func TestUpsertNotificationConfig_Insert(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	cfg := &models.NotificationConfig{
+		Type:    "macos",
+		Enabled: true,
+		Config:  map[string]interface{}{"sound": "default"},
+	}
+	if err := db.UpsertNotificationConfig(cfg); err != nil {
+		t.Fatalf("UpsertNotificationConfig failed: %v", err)
+	}
+
+	c, _ := db.GetNotificationConfig("macos")
+	if c == nil {
+		t.Fatal("expected config after insert")
+	}
+	if c.Type != "macos" {
+		t.Errorf("expected type 'macos', got %q", c.Type)
+	}
+}
+
+func TestUpsertNotificationConfig_Update(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "macos",
+		Enabled: false,
+		Config:  map[string]interface{}{"sound": "default"},
+	})
+
+	// Update: enable it
+	db.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "macos",
+		Enabled: true,
+		Config:  map[string]interface{}{"sound": "custom"},
+	})
+
+	c, _ := db.GetNotificationConfig("macos")
+	if !c.Enabled {
+		t.Error("expected enabled=true after update")
+	}
+}
+
+func TestUpsertNotificationConfig_DisabledConfig(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: false,
+		Config:  map[string]interface{}{"smtp_host": "smtp.example.com"},
+	})
+
+	c, _ := db.GetNotificationConfig("email")
+	if c.Enabled {
+		t.Error("expected enabled=false")
+	}
+}
+
+// --- ExportAll tests ---
+
+func TestExportAll_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	export, err := db.ExportAll()
+	if err != nil {
+		t.Fatalf("ExportAll failed: %v", err)
+	}
+	if export == nil {
+		t.Fatal("expected non-nil export")
+	}
+	projects := export["projects"].([]models.Project)
+	tasks := export["tasks"].([]models.Task)
+	notifs := export["notifications"].([]models.Notification)
+	if len(projects) != 0 || len(tasks) != 0 || len(notifs) != 0 {
+		t.Errorf("expected empty export, got projects=%d tasks=%d notifs=%d",
+			len(projects), len(tasks), len(notifs))
+	}
+	if _, ok := export["exported_at"]; !ok {
+		t.Error("expected exported_at field")
+	}
+}
+
+func TestExportAll_WithData(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "export-test")
+	makeTask(t, db, pid, "task-1", models.TaskStatusPending)
+	db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false})
+
+	export, err := db.ExportAll()
+	if err != nil {
+		t.Fatalf("ExportAll failed: %v", err)
+	}
+	projects := export["projects"].([]models.Project)
+	tasks := export["tasks"].([]models.Task)
+	notifs := export["notifications"].([]models.Notification)
+	if len(projects) != 1 {
+		t.Errorf("expected 1 project, got %d", len(projects))
+	}
+	if len(tasks) != 1 {
+		t.Errorf("expected 1 task, got %d", len(tasks))
+	}
+	if len(notifs) != 1 {
+		t.Errorf("expected 1 notification, got %d", len(notifs))
+	}
+}
