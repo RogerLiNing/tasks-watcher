@@ -25,6 +25,7 @@ func TaskSubtaskCommand() *cobra.Command {
 
 func taskSubtaskCreateCmd() *cobra.Command {
 	var taskID, title, description, priority, assignee string
+	var position int
 	c := &cobra.Command{
 		Use:   "create --task-id <id> -t <title>",
 		Short: "Create a subtask under a parent task",
@@ -45,6 +46,9 @@ func taskSubtaskCreateCmd() *cobra.Command {
 			if assignee != "" {
 				body["assignee"] = assignee
 			}
+			if position > 0 {
+				body["position"] = position
+			}
 			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/subtasks", body)
 			if err != nil {
 				return err
@@ -64,6 +68,7 @@ func taskSubtaskCreateCmd() *cobra.Command {
 	c.Flags().StringVarP(&description, "description", "d", "", "Subtask description")
 	c.Flags().StringVarP(&priority, "priority", "P", "", "Priority: low, medium, high, urgent")
 	c.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
+	c.Flags().IntVar(&position, "position", 0, "Insert at position (1-based). Defaults to end.")
 	c.MarkFlagRequired("task-id")
 	c.MarkFlagRequired("title")
 	return c
@@ -71,6 +76,7 @@ func taskSubtaskCreateCmd() *cobra.Command {
 
 func taskSubtaskLinkCmd() *cobra.Command {
 	var taskID, childID string
+	var position int
 	c := &cobra.Command{
 		Use:   "link --task-id <id> --add <child-id>",
 		Short: "Link an existing task as a subtask",
@@ -81,7 +87,11 @@ func taskSubtaskLinkCmd() *cobra.Command {
 			if childID == "" {
 				return fmt.Errorf("--add <child-id> is required")
 			}
-			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/subtasks", map[string]string{"child_id": childID})
+			body := map[string]interface{}{"child_id": childID}
+			if position > 0 {
+				body["position"] = position
+			}
+			resp, err := apiRequest("POST", "/api/tasks/"+taskID+"/subtasks", body)
 			if err != nil {
 				return err
 			}
@@ -97,6 +107,7 @@ func taskSubtaskLinkCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&taskID, "task-id", "", "Parent task ID (required)")
 	c.Flags().StringVar(&childID, "add", "", "Existing task ID to link as subtask")
+	c.Flags().IntVar(&position, "position", 0, "Insert at position (1-based). Defaults to end.")
 	c.MarkFlagRequired("task-id")
 	c.MarkFlagRequired("add")
 	return c
@@ -132,7 +143,11 @@ func taskSubtaskListCmd() *cobra.Command {
 				fmt.Println("  (none)")
 			}
 			for _, s := range subtasks {
-				fmt.Printf("  [%s] %s [%s]\n", s["status"], s["title"], s["id"])
+				pos := 0
+				if p, ok := s["position"].(float64); ok {
+					pos = int(p)
+				}
+				fmt.Printf("  [%d] [%s] %s [%s]\n", pos, s["status"], s["title"], s["id"])
 			}
 			return nil
 		},

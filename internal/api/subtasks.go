@@ -81,6 +81,9 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 			return
 		}
+		if req.Position > 0 {
+			h.db.SetSubtaskPosition(parentID, req.ChildID, req.Position)
+		}
 		BroadcastTaskEvent(h.sse, models.EventSubtaskAdded, map[string]interface{}{
 			"parent_id": parentID,
 			"child":     child,
@@ -140,6 +143,10 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		h.db.DeleteTask(t.ID)
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
+	}
+
+	if req.Position > 0 {
+		h.db.SetSubtaskPosition(parentID, t.ID, req.Position)
 	}
 
 	BroadcastTaskEvent(h.sse, models.EventSubtaskAdded, map[string]interface{}{
