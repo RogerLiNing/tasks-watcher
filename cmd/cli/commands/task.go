@@ -223,14 +223,22 @@ func taskListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var result map[string][]map[string]interface{}
-			if err := json.Unmarshal(resp, &result); err != nil {
+			var raw map[string]interface{}
+			if err := json.Unmarshal(resp, &raw); err != nil {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
-			tasks := result["tasks"]
-			if len(tasks) == 0 {
+			tasksRaw, ok := raw["tasks"].([]interface{})
+			if !ok || len(tasksRaw) == 0 {
 				fmt.Println("No tasks found.")
 				return nil
+			}
+			tasks := make([]map[string]interface{}, len(tasksRaw))
+			for i, t := range tasksRaw {
+				tasks[i] = t.(map[string]interface{})
+			}
+
+			if total, ok := raw["total"].(float64); ok {
+				fmt.Printf("(showing %d of %d tasks)\n", len(tasks), int(total))
 			}
 
 			fmt.Printf("%-12s %-10s %-8s %-12s %s\n", "STATUS", "PRIORITY", "ASSIGNEE", "MODE/SOURCE", "TITLE")
