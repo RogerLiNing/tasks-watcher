@@ -262,6 +262,54 @@ func (c *Client) TaskFail(args map[string]interface{}) (*mcp.ToolsCallResult, er
 	return c.updateStatus(args, "failed", reason)
 }
 
+func (c *Client) TaskUpdate(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	id := str(args["task_id"], "")
+	if id == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+
+	body := map[string]interface{}{}
+	if title := str(args["title"], ""); title != "" {
+		body["title"] = title
+	}
+	if desc := str(args["description"], ""); desc != "" {
+		body["description"] = desc
+	}
+	if pri := str(args["priority"], ""); pri != "" {
+		body["priority"] = pri
+	}
+	if asgn := str(args["assignee"], ""); asgn != "" {
+		body["assignee"] = asgn
+	}
+	if mode := str(args["task_mode"], ""); mode != "" {
+		body["task_mode"] = mode
+	}
+
+	if len(body) == 0 {
+		return nil, fmt.Errorf("no fields to update: provide title, description, priority, assignee, or task_mode")
+	}
+
+	data, status, err := c.do("PUT", "/api/tasks/"+id, body)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(data))
+	}
+
+	var task Task
+	if err := json.Unmarshal(data, &task); err != nil {
+		return nil, fmt.Errorf("invalid response: %w", err)
+	}
+
+	text := fmt.Sprintf("✅ Task updated: [%s] %s\nStatus: %s\nPriority: %s",
+		task.ID[:8], task.Title, task.Status, task.Priority)
+
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
 func (c *Client) TaskCancel(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
 	return c.updateStatus(args, "cancelled", "")
 }

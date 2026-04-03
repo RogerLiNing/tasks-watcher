@@ -90,6 +90,15 @@ func GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "task_update",
+			Description: "Update a task's title, description, priority, assignee, or task mode.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: taskUpdateProps(),
+				Required:   []string{"task_id"},
+			},
+		},
+		{
 			Name:        "task_cancel",
 			Description: "Cancel a task.",
 			InputSchema: ToolInputSchema{
@@ -158,6 +167,17 @@ func taskFailProps() map[string]SchemaProp {
 	return props
 }
 
+func taskUpdateProps() map[string]SchemaProp {
+	return map[string]SchemaProp{
+		"task_id":   {Type: "string", Description: "ID of the task to update (required)"},
+		"title":     {Type: "string", Description: "New task title"},
+		"description": {Type: "string", Description: "New task description"},
+		"priority":  {Type: "string", Description: "New priority", Enum: []string{"low", "medium", "high", "urgent"}},
+		"assignee":  {Type: "string", Description: "New assignee"},
+		"task_mode": {Type: "string", Description: "New task mode", Enum: []string{"sequential", "parallel"}},
+	}
+}
+
 func taskIDProps(idField, desc string) map[string]SchemaProp {
 	return map[string]SchemaProp{
 		idField: {Type: "string", Description: desc},
@@ -196,6 +216,8 @@ func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[
 		return api.TaskComplete(args)
 	case "task_fail":
 		return api.TaskFail(args)
+	case "task_update":
+		return api.TaskUpdate(args)
 	case "task_cancel":
 		return api.TaskCancel(args)
 	case "project_list":
