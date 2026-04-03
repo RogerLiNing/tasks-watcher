@@ -293,30 +293,53 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 	return t, nil
 }
 
-func (db *DB) ListTasks(projectID, status, assignee, search string) ([]models.Task, error) {
+func (db *DB) ListTasks(projectID, status, assignee, search, source string, limit, offset int) ([]models.Task, int, error) {
 	query := `SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at FROM tasks WHERE 1=1`
+	countQuery := `SELECT COUNT(*) FROM tasks WHERE 1=1`
 	args := []interface{}{}
 	if projectID != "" {
 		query += " AND project_id = ?"
+		countQuery += " AND project_id = ?"
 		args = append(args, projectID)
 	}
 	if status != "" {
 		query += " AND status = ?"
+		countQuery += " AND status = ?"
 		args = append(args, status)
 	}
 	if assignee != "" {
 		query += " AND assignee = ?"
+		countQuery += " AND assignee = ?"
 		args = append(args, assignee)
 	}
 	if search != "" {
 		query += " AND title LIKE ?"
+		countQuery += " AND title LIKE ?"
 		args = append(args, "%"+search+"%")
 	}
-	query += " ORDER BY created_at DESC LIMIT 500"
+	if source != "" {
+		query += " AND source = ?"
+		countQuery += " AND source = ?"
+		args = append(args, source)
+	}
+
+	var total int
+	if err := db.conn.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 
 	rows, err := db.conn.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -327,8 +350,8 @@ func (db *DB) ListTasks(projectID, status, assignee, search string) ([]models.Ta
 		var errorMsg sql.NullString
 		var descStr sql.NullString
 		var taskMode sql.NullString
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &t.CreatedAt, &t.UpdatedAt, &heartbeatAt, &completedAt); err != nil {
+			return nil, 0, err
 		}
 		if descStr.Valid && descStr.String != "" {
 			var parsed map[string]string
@@ -350,7 +373,7 @@ func (db *DB) ListTasks(projectID, status, assignee, search string) ([]models.Ta
 		}
 		tasks = append(tasks, t)
 	}
-	return tasks, rows.Err()
+	return tasks, total, rows.Err()
 }
 
 func (db *DB) UpdateTask(t *models.Task) error {
@@ -572,7 +595,7 @@ func (db *DB) ExportAll() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := db.ListTasks("", "", "", "")
+	tasks, _, err := db.ListTasks("", "", "", "", "", 0, 0)
 	if err != nil {
 		return nil, err
 	}

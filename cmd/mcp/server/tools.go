@@ -229,6 +229,7 @@ func taskListProps() map[string]SchemaProp {
 		"status":    {Type: "string", Description: "Filter by status", Enum: []string{"pending", "in_progress", "completed", "failed", "cancelled"}},
 		"assignee":  {Type: "string", Description: "Filter by assignee"},
 		"search":    {Type: "string", Description: "Search by title (case-insensitive substring match)"},
+		"source":    {Type: "string", Description: "Filter by source", Enum: []string{"claude-code", "cursor", "cli", "manual"}},
 	}
 }
 

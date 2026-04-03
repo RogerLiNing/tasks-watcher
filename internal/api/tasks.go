@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/rogerrlee/tasks-watcher/internal/db"
@@ -55,8 +56,22 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	assignee := r.URL.Query().Get("assignee")
 	search := r.URL.Query().Get("search")
+	source := r.URL.Query().Get("source")
 
-	tasks, err := h.db.ListTasks(projectID, status, assignee, search)
+	limit := 100
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed := parseInt(l); parsed > 0 {
+			limit = parsed
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed := parseInt(o); parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	tasks, total, err := h.db.ListTasks(projectID, status, assignee, search, source, limit, offset)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -64,7 +79,7 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []models.Task{}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"tasks": tasks})
+	json.NewEncoder(w).Encode(map[string]interface{}{"tasks": tasks, "total": total, "limit": limit, "offset": offset})
 }
 
 func (h *TaskHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +406,13 @@ func validateTransition(from, to models.TaskStatus) error {
 		}
 	}
 	return fmt.Errorf("invalid transition from %s to %s", from, to)
+}
+
+func parseInt(s string) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return 0
 }
 
 func (h *TaskHandler) Register(router *mux.Router) {

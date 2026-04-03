@@ -175,6 +175,9 @@ func (c *Client) TaskList(args map[string]interface{}) (*mcp.ToolsCallResult, er
 	if search := str(args["search"], ""); search != "" {
 		path += "search=" + search + "&"
 	}
+	if src := str(args["source"], ""); src != "" {
+		path += "source=" + src + "&"
+	}
 
 	data, status, err := c.do("GET", path, nil)
 	if err != nil {

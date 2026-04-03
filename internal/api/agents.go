@@ -38,7 +38,7 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AgentHandler) Overview(w http.ResponseWriter, r *http.Request) {
-	tasks, err := h.db.ListTasks("", "", "", "")
+	tasks, _, err := h.db.ListTasks("", "", "", "", "", 0, 0)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
