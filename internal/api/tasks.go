@@ -191,7 +191,11 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := h.db.GetTask(id)
-	if err != nil || t == nil {
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	if t == nil {
 		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 		return
 	}
@@ -244,7 +248,11 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := h.db.GetTask(id)
-	if err != nil || t == nil {
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	if t == nil {
 		http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 		return
 	}

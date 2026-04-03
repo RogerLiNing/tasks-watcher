@@ -3019,3 +3019,345 @@ func TestColumnHandler_List_DBError(t *testing.T) {
 		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// --- TaskHandler DB error tests ---
+
+func TestTaskHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_Get_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_Create_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"title": "new task"})
+	req := httptest.NewRequest("POST", "/tasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_Update_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"title": "updated"})
+	req := httptest.NewRequest("PUT", "/tasks/some-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_UpdateStatus_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"status": "in_progress"})
+	req := httptest.NewRequest("PATCH", "/tasks/some-id/status", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_Delete_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/tasks/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_Heartbeat_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewTaskHandler(database, sse, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("POST", "/tasks/some-id/heartbeat", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- SubtaskHandler DB error tests ---
+
+func TestSubtaskHandler_ListSubtasks_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewSubtaskHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id/subtasks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewSubtaskHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"title": "new child"})
+	req := httptest.NewRequest("POST", "/tasks/some-id/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_RemoveSubtask_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewSubtaskHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/tasks/parent-id/subtasks/child-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_ReorderSubtask_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewSubtaskHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]int{"position": 2})
+	req := httptest.NewRequest("PATCH", "/tasks/parent-id/subtasks/child-id/position", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- DepHandler DB error tests ---
+
+func TestDepHandler_ListBlockers_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewDepHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id/dependencies", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDepHandler_ListDependents_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewDepHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id/dependents", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDepHandler_CanStart_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewDepHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/tasks/some-id/can-start", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- WebhookHandler DB error tests ---
+
+func TestWebhookHandler_List_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewWebhookHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/webhooks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWebhookHandler_Create_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewWebhookHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"url": "http://example.com/hook"})
+	req := httptest.NewRequest("POST", "/webhooks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWebhookHandler_Delete_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewWebhookHandler(database)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/webhooks/some-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- AuthMiddleware tests ---
+
+func TestAuthMiddleware_MissingAuthEmptyHeader(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	// Empty Authorization header
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("Authorization", "")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for empty auth header, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- ColumnHandler Delete/Update error path tests ---
+
+func TestColumnHandler_Update_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test")
+	handler := NewColumnHandler(database, sse)
+
+	// Create a real column so ListColumns succeeds
+	database.CreateColumn(&models.TaskColumn{Key: "col1", Label: "Col 1", Color: "#fff"})
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"label": "updated"})
+	req := httptest.NewRequest("PUT", "/columns/col-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDepHandler_RemoveBlocker_DBError(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewDepHandler(database, nil)
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("DELETE", "/tasks/task-id/dependencies/blocker-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
