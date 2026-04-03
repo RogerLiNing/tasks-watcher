@@ -28,8 +28,9 @@
   }
 </script>
 
-<div class="panel-backdrop" on:click={() => dispatch('close')} role="button" tabindex="-1" on:keydown={() => {}}>
-  <aside class="panel" on:click|stopPropagation role="complementary">
+<button class="panel-backdrop" on:click={() => dispatch('close')} aria-label="Close notifications">
+</button>
+<aside class="panel">
     <div class="panel-header">
       <h2>{$t('notifications.title')}</h2>
       <div class="panel-actions">
@@ -56,13 +57,17 @@
       {/if}
     </div>
   </aside>
-</div>
+
 
 <style>
   .panel-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 200;
+    z-index: 199;
+    border: none;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
   }
 
   .panel {
@@ -75,6 +80,7 @@
     box-shadow: -4px 0 20px rgba(0,0,0,0.1);
     display: flex;
     flex-direction: column;
+    z-index: 200;
   }
 
   .panel-header {

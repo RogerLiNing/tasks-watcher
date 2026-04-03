@@ -260,7 +260,7 @@
         <h1 class="logo">{$t('app.title')}</h1>
       </div>
       <div class="topbar-center">
-        <QuickCreate projects={$projects} on:create={(e) => handleTaskCreate(e.detail)} />
+        <QuickCreate on:create={(e) => handleTaskCreate(e.detail)} />
       </div>
       <div class="topbar-right">
         <span class="sse-indicator" class:connected={$sseConnected} title={$sseConnected ? $t('sse.connected') : $t('sse.disconnected')}></span>
@@ -351,27 +351,27 @@
   {/if}
 
   {#if showSettings}
-    <div class="settings-overlay" on:click={() => showSettings = false} role="button" tabindex="-1" on:keydown={() => {}}>
-      <div class="settings-panel" on:click|stopPropagation role="dialog">
-        <div class="panel-header">
-          <h2>Settings</h2>
-          <button class="close-btn" on:click={() => showSettings = false}>×</button>
-        </div>
-        <div class="settings-tabs">
-          <button class="tab-btn" class:active={settingsTab === 'notifications'} on:click={() => settingsTab = 'notifications'}>
-            Notifications
-          </button>
-          <button class="tab-btn" class:active={settingsTab === 'columns'} on:click={() => settingsTab = 'columns'}>
-            Kanban Columns
-          </button>
-        </div>
-        <div class="settings-body">
-          {#if settingsTab === 'notifications'}
-            <NotificationSettings onClose={() => showSettings = false} />
-          {:else}
-            <ColumnSettings />
-          {/if}
-        </div>
+    <button class="settings-overlay" on:click={() => showSettings = false} aria-label="Close settings">
+    </button>
+    <div class="settings-panel" role="dialog">
+      <div class="panel-header">
+        <h2>Settings</h2>
+        <button class="close-btn" on:click={() => showSettings = false}>×</button>
+      </div>
+      <div class="settings-tabs">
+        <button class="tab-btn" class:active={settingsTab === 'notifications'} on:click={() => settingsTab = 'notifications'}>
+          Notifications
+        </button>
+        <button class="tab-btn" class:active={settingsTab === 'columns'} on:click={() => settingsTab = 'columns'}>
+          Kanban Columns
+        </button>
+      </div>
+      <div class="settings-body">
+        {#if settingsTab === 'notifications'}
+          <NotificationSettings />
+        {:else}
+          <ColumnSettings />
+        {/if}
       </div>
     </div>
   {/if}
@@ -389,13 +389,17 @@
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 300;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 299;
   }
 
   .settings-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: white;
     border-radius: 16px;
     width: 580px;
@@ -405,6 +409,7 @@
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     display: flex;
     flex-direction: column;
+    z-index: 300;
   }
 
   .panel-header {
@@ -490,8 +495,6 @@
 
   .setup-card h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
   .setup-card p { color: #6e6e73; font-size: 0.9rem; margin-bottom: 1rem; }
-  .setup-card .hint { font-size: 0.8rem; color: #86868b; margin-bottom: 1.5rem; }
-  .setup-card code { background: #f5f5f7; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }
 
   .setup-card input {
     width: 100%;

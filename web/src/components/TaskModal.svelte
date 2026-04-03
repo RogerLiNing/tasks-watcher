@@ -76,8 +76,9 @@
   }
 </script>
 
-<div class="modal-backdrop" on:click={() => dispatch('close')} role="button" tabindex="-1" on:keydown={() => {}}>
-  <div class="modal" on:click|stopPropagation on:keydown|stopPropagation={() => {}} role="dialog">
+<button class="modal-backdrop" on:click={() => dispatch('close')} aria-label="Close modal">
+</button>
+<div class="modal" role="dialog">
     <div class="modal-header">
       <span class="status-indicator" style="background:{statusColor(task.status)}"></span>
       <span class="status-label">{$t('columns.' + task.status)}</span>
@@ -220,20 +221,23 @@
       </div>
     {/if}
   </div>
-</div>
 
 <style>
   .modal-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 99;
   }
 
   .modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: white;
     border-radius: 16px;
     width: 520px;
@@ -241,6 +245,7 @@
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    z-index: 100;
   }
 
   .modal-header {

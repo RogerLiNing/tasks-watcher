@@ -96,8 +96,6 @@
     transition: background 0.15s;
   }
 
-  .column.drag-over { background: #e8f0fe; }
-
   .column-header {
     display: flex;
     align-items: center;

@@ -2,8 +2,6 @@
   import { createEventDispatcher } from 'svelte';
   import { t } from '../lib/i18n/index.js';
 
-  export let projects = [];
-
   const dispatch = createEventDispatcher();
   let title = '';
   let priority = 'medium';

@@ -2,8 +2,6 @@
   import { t } from '../lib/i18n/index.js';
   import { api } from '../lib/api.js';
 
-  export let onClose = () => {};
-
   let configs = {};
   let loading = true;
   let saving = false;
@@ -154,28 +152,28 @@
 
           <div class="form-grid">
             <div class="form-row">
-              <label>SMTP Host</label>
-              <input type="text" bind:value={smtpHost} placeholder="smtp.gmail.com" />
+              <label for="smtp-host">SMTP Host</label>
+              <input id="smtp-host" type="text" bind:value={smtpHost} placeholder="smtp.gmail.com" />
             </div>
             <div class="form-row form-row--sm">
-              <label>Port</label>
-              <input type="number" bind:value={smtpPort} placeholder="587" />
+              <label for="smtp-port">Port</label>
+              <input id="smtp-port" type="number" bind:value={smtpPort} placeholder="587" />
             </div>
             <div class="form-row">
-              <label>SMTP Username</label>
-              <input type="text" bind:value={smtpUsername} placeholder="your@email.com" />
+              <label for="smtp-user">SMTP Username</label>
+              <input id="smtp-user" type="text" bind:value={smtpUsername} placeholder="your@email.com" />
             </div>
             <div class="form-row">
-              <label>SMTP Password</label>
-              <input type="password" bind:value={smtpPassword} placeholder="App password (not login password)" />
+              <label for="smtp-pass">SMTP Password</label>
+              <input id="smtp-pass" type="password" bind:value={smtpPassword} placeholder="App password (not login password)" />
             </div>
             <div class="form-row">
-              <label>From Address</label>
-              <input type="email" bind:value={fromAddress} placeholder="tasks@example.com" />
+              <label for="from-addr">From Address</label>
+              <input id="from-addr" type="email" bind:value={fromAddress} placeholder="tasks@example.com" />
             </div>
             <div class="form-row form-row--full">
-              <label>To Addresses <span class="hint">(comma-separated)</span></label>
-              <input type="text" bind:value={toAddressesStr} placeholder="user1@example.com, user2@example.com" />
+              <label for="to-addrs">To Addresses <span class="hint">(comma-separated)</span></label>
+              <input id="to-addrs" type="text" bind:value={toAddressesStr} placeholder="user1@example.com, user2@example.com" />
             </div>
           </div>
 
