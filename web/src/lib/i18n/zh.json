@@ -78,7 +78,10 @@
     "tabDetails": "详情",
     "tabDependencies": "依赖",
     "tabSubtasks": "子任务",
-    "mode": "模式"
+    "mode": "模式",
+    "taskMode": "任务模式：",
+    "sequential": "🔗 顺序执行",
+    "parallel": "⚡ 并行执行"
   },
   "depPanel": {
     "title": "依赖关系",
@@ -96,7 +99,9 @@
     "addSubtask": "+ 添加",
     "cancelAdd": "− 取消",
     "creating": "创建中...",
-    "create": "创建"
+    "create": "创建",
+    "sequentialOrder": "🔗 顺序执行",
+    "parallelAllRun": "⚡ 并行执行 — 所有子任务独立运行"
   },
   "columnSettings": {
     "title": "看板列",
@@ -104,6 +109,7 @@
     "cancel": "取消",
     "save": "保存",
     "label": "标签",
+    "labelPlaceholder": "例如：待审核、已阻塞...",
     "color": "颜色",
     "creating": "创建中...",
     "deleteConfirm": "删除列 \"{name}\"？该列中的任务将变为无列归属。"

@@ -125,7 +125,7 @@
             </label>
           </div>
           <div class="edit-row edit-mode-row">
-            <span class="mode-label">Task mode:</span>
+            <span class="mode-label">{$t('taskModal.taskMode')}</span>
             <label class="mode-radio">
               <input type="radio" bind:group={editTaskMode} value="" />
               Default (parallel)
@@ -168,7 +168,7 @@
             {#if task.task_mode === 'sequential' || task.task_mode === 'parallel'}
               <div class="meta-item">
                 <span class="meta-label">{$t('taskModal.mode')}</span>
-                <span class="meta-value mode-badge" data-mode={task.task_mode}>{task.task_mode === 'sequential' ? '🔗 Sequential' : '⚡ Parallel'}</span>
+                <span class="meta-value mode-badge" data-mode={task.task_mode}>{task.task_mode === 'sequential' ? $t('taskModal.sequential') : $t('taskModal.parallel')}</span>
               </div>
             {/if}
             <div class="meta-item">

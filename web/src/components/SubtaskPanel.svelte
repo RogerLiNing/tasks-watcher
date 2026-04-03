@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { t, locale } from '../lib/i18n/index.js';
+  import { t } from '../lib/i18n/index.js';
   import { api } from '../lib/api.js';
 
   export let task;
@@ -117,7 +117,7 @@
 
     {#if parentMode === 'sequential' || parentMode === 'parallel'}
       <div class="mode-indicator" class:sequential={parentMode === 'sequential'} class:parallel={parentMode === 'parallel'}>
-        {parentMode === 'sequential' ? '🔗 Sequential order' : '⚡ Parallel — all run independently'}
+        {parentMode === 'sequential' ? $t('subtaskPanel.sequentialOrder') : $t('subtaskPanel.parallelAllRun')}
       </div>
     {/if}
 

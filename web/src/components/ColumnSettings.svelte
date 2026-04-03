@@ -104,7 +104,7 @@
       <div class="form-row">
         <label>
           {$t('columnSettings.label')}
-          <input bind:value={newLabel} placeholder="e.g. Review, Blocked..." on:keydown={(e) => e.key === 'Enter' && createCol()} />
+          <input bind:value={newLabel} placeholder={$t('columnSettings.labelPlaceholder')} on:keydown={(e) => e.key === 'Enter' && createCol()} />
         </label>
         <label>
           {$t('columnSettings.color')}

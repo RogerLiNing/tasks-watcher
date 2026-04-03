@@ -78,7 +78,10 @@
     "tabDetails": "Details",
     "tabDependencies": "Dependencies",
     "tabSubtasks": "Subtasks",
-    "mode": "Mode"
+    "mode": "Mode",
+    "taskMode": "Task mode:",
+    "sequential": "🔗 Sequential",
+    "parallel": "⚡ Parallel"
   },
   "depPanel": {
     "title": "Dependencies",
@@ -96,7 +99,9 @@
     "addSubtask": "+ Add",
     "cancelAdd": "− Cancel",
     "creating": "Creating...",
-    "create": "Create"
+    "create": "Create",
+    "sequentialOrder": "🔗 Sequential order",
+    "parallelAllRun": "⚡ Parallel — all run independently"
   },
   "columnSettings": {
     "title": "Kanban Columns",
@@ -104,6 +109,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "label": "Label",
+    "labelPlaceholder": "e.g. Review, Blocked...",
     "color": "Color",
     "creating": "Creating...",
     "deleteConfirm": "Delete column \"{name}\"? Tasks in this column will become orphaned."
