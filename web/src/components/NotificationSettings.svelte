@@ -153,27 +153,27 @@
           <div class="form-grid">
             <div class="form-row">
               <label for="smtp-host">{$t('notificationSettings.smtpHost')}</label>
-              <input id="smtp-host" type="text" bind:value={smtpHost} placeholder="smtp.gmail.com" />
+              <input id="smtp-host" type="text" bind:value={smtpHost} placeholder={$t('notificationSettings.smtpHostPlaceholder')} />
             </div>
             <div class="form-row form-row--sm">
               <label for="smtp-port">{$t('notificationSettings.port')}</label>
-              <input id="smtp-port" type="number" bind:value={smtpPort} placeholder="587" />
+              <input id="smtp-port" type="number" bind:value={smtpPort} placeholder={$t('notificationSettings.smtpPortPlaceholder')} />
             </div>
             <div class="form-row">
               <label for="smtp-user">{$t('notificationSettings.smtpUser')}</label>
-              <input id="smtp-user" type="text" bind:value={smtpUsername} placeholder="your@email.com" />
+              <input id="smtp-user" type="text" bind:value={smtpUsername} placeholder={$t('notificationSettings.smtpUserPlaceholder')} />
             </div>
             <div class="form-row">
               <label for="smtp-pass">{$t('notificationSettings.smtpPass')}</label>
-              <input id="smtp-pass" type="password" bind:value={smtpPassword} placeholder="App password (not login password)" />
+              <input id="smtp-pass" type="password" bind:value={smtpPassword} placeholder={$t('notificationSettings.smtpPassPlaceholder')} />
             </div>
             <div class="form-row">
               <label for="from-addr">{$t('notificationSettings.fromAddr')}</label>
-              <input id="from-addr" type="email" bind:value={fromAddress} placeholder="tasks@example.com" />
+              <input id="from-addr" type="email" bind:value={fromAddress} placeholder={$t('notificationSettings.fromAddrPlaceholder')} />
             </div>
             <div class="form-row form-row--full">
               <label for="to-addrs">{$t('notificationSettings.toAddrs')} <span class="hint">{$t('notificationSettings.toAddrsHint')}</span></label>
-              <input id="to-addrs" type="text" bind:value={toAddressesStr} placeholder="user1@example.com, user2@example.com" />
+              <input id="to-addrs" type="text" bind:value={toAddressesStr} placeholder={$t('notificationSettings.toAddrsPlaceholder')} />
             </div>
           </div>
 

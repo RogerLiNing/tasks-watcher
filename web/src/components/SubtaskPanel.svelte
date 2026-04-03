@@ -126,13 +126,13 @@
         <input
           class="form-input"
           bind:value={newTitle}
-          placeholder="Subtask title..."
+          placeholder={$t('subtaskPanel.titlePlaceholder')}
           on:keydown={(e) => e.key === 'Enter' && createSubtask()}
         />
         <textarea
           class="form-textarea"
           bind:value={newDesc}
-          placeholder="Description (optional)"
+          placeholder={$t('subtaskPanel.descPlaceholder')}
           rows="2"
         ></textarea>
         <div class="form-actions">

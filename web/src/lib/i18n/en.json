@@ -101,7 +101,9 @@
     "creating": "Creating...",
     "create": "Create",
     "sequentialOrder": "🔗 Sequential order",
-    "parallelAllRun": "⚡ Parallel — all run independently"
+    "parallelAllRun": "⚡ Parallel — all run independently",
+    "titlePlaceholder": "Subtask title...",
+    "descPlaceholder": "Description (optional)"
   },
   "columnSettings": {
     "title": "Kanban Columns",
@@ -140,7 +142,13 @@
     "tipGmail": "<strong>Gmail tip:</strong> Use an <a href=\"https://support.google.com/accounts/answer/185833\" target=\"_blank\">App Password</a> instead of your login password. Enable 2FA first.",
     "macosDesc": "Show macOS system notifications when tasks start, complete, or fail.",
     "saveBtn": "Save",
-    "saveEmailBtn": "Save Email Settings"
+    "saveEmailBtn": "Save Email Settings",
+    "smtpHostPlaceholder": "smtp.gmail.com",
+    "smtpPortPlaceholder": "587",
+    "smtpUserPlaceholder": "your@email.com",
+    "smtpPassPlaceholder": "App password (not login password)",
+    "fromAddrPlaceholder": "tasks@example.com",
+    "toAddrsPlaceholder": "user1@example.com, user2@example.com"
   },
   "time": {
     "justNow": "just now",

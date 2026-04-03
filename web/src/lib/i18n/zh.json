@@ -101,7 +101,9 @@
     "creating": "创建中...",
     "create": "创建",
     "sequentialOrder": "🔗 顺序执行",
-    "parallelAllRun": "⚡ 并行执行 — 所有子任务独立运行"
+    "parallelAllRun": "⚡ 并行执行 — 所有子任务独立运行",
+    "titlePlaceholder": "子任务标题...",
+    "descPlaceholder": "描述（可选）"
   },
   "columnSettings": {
     "title": "看板列",
@@ -140,7 +142,13 @@
     "tipGmail": "<strong>Gmail 提示：</strong>使用 <a href=\"https://support.google.com/accounts/answer/185833\" target=\"_blank\">应用密码</a> 而非登录密码。需先开启两步验证。",
     "macosDesc": "任务开始、完成或失败时显示 macOS 系统通知。",
     "saveBtn": "保存",
-    "saveEmailBtn": "保存邮件设置"
+    "saveEmailBtn": "保存邮件设置",
+    "smtpHostPlaceholder": "smtp.gmail.com",
+    "smtpPortPlaceholder": "587",
+    "smtpUserPlaceholder": "your@email.com",
+    "smtpPassPlaceholder": "应用密码（非登录密码）",
+    "fromAddrPlaceholder": "tasks@example.com",
+    "toAddrsPlaceholder": "user1@example.com, user2@example.com"
   },
   "time": {
     "justNow": "刚刚",
