@@ -23,6 +23,7 @@
       case 'task.failed': return '❌';
       case 'task.cancelled': return '○';
       case 'task.created': return '🆕';
+      case 'task.updated': return '✏️';
       default: return '📌';
     }
   }

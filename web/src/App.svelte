@@ -117,6 +117,7 @@
         case 'task.dependency.removed':
         case 'task.subtask.added':
         case 'task.subtask.removed':
+        case 'task.subtask.reordered':
           // Refresh the affected task if it's the selected one
           if (selectedTask && event.payload && (event.payload.task_id || event.payload.parent_id)) {
             const taskId = event.payload.task_id || event.payload.parent_id;
