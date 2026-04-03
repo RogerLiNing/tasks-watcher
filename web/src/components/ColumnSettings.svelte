@@ -1,4 +1,5 @@
 <script>
+  import { t } from '../lib/i18n/index.js';
   import { api } from '../lib/api.js';
   import { columns } from '../lib/stores.js';
 
@@ -88,9 +89,9 @@
 
 <div class="cs-wrapper">
   <div class="settings-header">
-    <h3>Kanban Columns</h3>
+    <h3>{$t('columnSettings.title')}</h3>
     <button class="add-btn" on:click={() => showCreate = !showCreate}>
-      {showCreate ? '− Cancel' : '+ Add Column'}
+      {showCreate ? $t('columnSettings.cancel') : $t('columnSettings.addColumn')}
     </button>
   </div>
 
@@ -102,11 +103,11 @@
     <div class="create-form">
       <div class="form-row">
         <label>
-          Label
+          {$t('columnSettings.label')}
           <input bind:value={newLabel} placeholder="e.g. Review, Blocked..." on:keydown={(e) => e.key === 'Enter' && createCol()} />
         </label>
         <label>
-          Color
+          {$t('columnSettings.color')}
           <div class="color-row">
             {#each defaultColors as c}
               <button
@@ -122,14 +123,14 @@
       </div>
       <div class="form-actions">
         <button class="create-submit" on:click={createCol} disabled={creating || !newLabel.trim()}>
-          {creating ? 'Creating...' : 'Add Column'}
+          {creating ? $t('columnSettings.creating') : $t('columnSettings.addColumn')}
         </button>
       </div>
     </div>
   {/if}
 
   {#if loading}
-    <p class="loading">Loading...</p>
+    <p class="loading">{$t('common.loading')}</p>
   {:else}
     <div class="col-list">
       {#each cols as col (col.id)}
@@ -149,8 +150,8 @@
                 {/each}
               </div>
               <div class="edit-actions">
-                <button class="save-btn" on:click={() => saveEdit(col)}>Save</button>
-                <button class="cancel-btn" on:click={() => cancelEdit(col.id)}>Cancel</button>
+                <button class="save-btn" on:click={() => saveEdit(col)}>{$t('columnSettings.save')}</button>
+                <button class="cancel-btn" on:click={() => cancelEdit(col.id)}>{$t('columnSettings.cancel')}</button>
               </div>
             </div>
           {:else}

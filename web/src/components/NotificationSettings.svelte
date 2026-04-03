@@ -110,10 +110,10 @@
 
 <div class="ns-content">
     <div class="panel-header">
-      <h2>Notification Settings</h2>
+      <h2>{$t('notificationSettings.title')}</h2>
       <div class="header-actions">
         {#if saved}
-          <span class="saved-badge">Saved</span>
+          <span class="saved-badge">{$t('notificationSettings.saved')}</span>
         {/if}
       </div>
     </div>
@@ -126,15 +126,15 @@
         <!-- macOS Notifications -->
         <section class="notif-section">
           <div class="section-header">
-            <h3>macOS Notification Center</h3>
+            <h3>{$t('notificationSettings.macosSection') || 'macOS Notification Center'}</h3>
             <label class="toggle-label">
               <input type="checkbox" bind:checked={macosEnabled} />
-              <span>{macosEnabled ? 'On' : 'Off'}</span>
+              <span>{macosEnabled ? $t('common.on') : $t('common.off')}</span>
             </label>
           </div>
-          <p class="section-desc">Show macOS system notifications when tasks start, complete, or fail.</p>
+          <p class="section-desc">{$t('notificationSettings.macosDesc') || 'Show macOS system notifications when tasks start, complete, or fail.'}</p>
           <button class="save-btn" on:click={saveMacos} disabled={saving}>
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? $t('common.saving') : $t('notificationSettings.saveBtn')}
           </button>
         </section>
 
@@ -143,46 +143,44 @@
         <!-- Email Notifications -->
         <section class="notif-section">
           <div class="section-header">
-            <h3>Email Notifications</h3>
+            <h3>{$t('notificationSettings.emailSection')}</h3>
             <label class="toggle-label">
               <input type="checkbox" bind:checked={emailEnabled} />
-              <span>{emailEnabled ? 'On' : 'Off'}</span>
+              <span>{emailEnabled ? $t('common.on') : $t('common.off')}</span>
             </label>
           </div>
 
           <div class="form-grid">
             <div class="form-row">
-              <label for="smtp-host">SMTP Host</label>
+              <label for="smtp-host">{$t('notificationSettings.smtpHost')}</label>
               <input id="smtp-host" type="text" bind:value={smtpHost} placeholder="smtp.gmail.com" />
             </div>
             <div class="form-row form-row--sm">
-              <label for="smtp-port">Port</label>
+              <label for="smtp-port">{$t('notificationSettings.port')}</label>
               <input id="smtp-port" type="number" bind:value={smtpPort} placeholder="587" />
             </div>
             <div class="form-row">
-              <label for="smtp-user">SMTP Username</label>
+              <label for="smtp-user">{$t('notificationSettings.smtpUser')}</label>
               <input id="smtp-user" type="text" bind:value={smtpUsername} placeholder="your@email.com" />
             </div>
             <div class="form-row">
-              <label for="smtp-pass">SMTP Password</label>
+              <label for="smtp-pass">{$t('notificationSettings.smtpPass')}</label>
               <input id="smtp-pass" type="password" bind:value={smtpPassword} placeholder="App password (not login password)" />
             </div>
             <div class="form-row">
-              <label for="from-addr">From Address</label>
+              <label for="from-addr">{$t('notificationSettings.fromAddr')}</label>
               <input id="from-addr" type="email" bind:value={fromAddress} placeholder="tasks@example.com" />
             </div>
             <div class="form-row form-row--full">
-              <label for="to-addrs">To Addresses <span class="hint">(comma-separated)</span></label>
+              <label for="to-addrs">{$t('notificationSettings.toAddrs')} <span class="hint">{$t('notificationSettings.toAddrsHint')}</span></label>
               <input id="to-addrs" type="text" bind:value={toAddressesStr} placeholder="user1@example.com, user2@example.com" />
             </div>
           </div>
 
-          <p class="section-tip">
-            <strong>Tip for Gmail:</strong> Use an <a href="https://support.google.com/accounts/answer/185833" target="_blank">App Password</a> instead of your login password. Enable 2FA first.
-          </p>
+          <p class="section-tip">{@html $t('notificationSettings.tipGmail')}</p>
 
           <button class="save-btn" on:click={saveEmail} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Email Settings'}
+            {saving ? $t('common.saving') : $t('notificationSettings.saveEmailBtn')}
           </button>
         </section>
 
@@ -261,7 +259,7 @@
     margin: 0;
   }
 
-  .section-tip a { color: #0071e3; }
+  .section-tip :global(a) { color: #0071e3; }
 
   .form-grid {
     display: grid;

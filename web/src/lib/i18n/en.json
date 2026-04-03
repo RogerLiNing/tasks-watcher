@@ -1,6 +1,7 @@
 {
   "app": {
     "title": "Tasks Watcher",
+    "settings": "Settings",
     "loading": "Loading Tasks Watcher...",
     "connectTitle": "Tasks Watcher",
     "connectHint": "Start the server with <code>tasks-watcher-server</code> to get your API key. It's also saved at <code>~/.tasks-watcher/api.key</code>",
@@ -29,6 +30,7 @@
     "projectDescPlaceholder": "Description (tech stack, goals, etc.)...",
     "editDesc": "Edit description",
     "save": "Save",
+    "cancel": "Cancel",
     "description": "Description"
   },
   "quickCreate": {
@@ -60,7 +62,62 @@
     "source": "Source",
     "created": "Created",
     "completed": "Completed",
-    "error": "Error"
+    "error": "Error",
+    "tabDetails": "Details",
+    "tabDependencies": "Dependencies",
+    "tabSubtasks": "Subtasks",
+    "mode": "Mode"
+  },
+  "depPanel": {
+    "title": "Dependencies",
+    "noBlockers": "No blockers",
+    "noDependents": "No dependent tasks",
+    "blockedBy": "Blocked by",
+    "blocking": "Blocking",
+    "canStart": "✓ Can start",
+    "blocked": "🔒 Blocked",
+    "addBlocker": "+ Add blocker..."
+  },
+  "subtaskPanel": {
+    "title": "Subtasks",
+    "noSubtasks": "No subtasks yet",
+    "addSubtask": "+ Add",
+    "cancelAdd": "− Cancel",
+    "creating": "Creating...",
+    "create": "Create"
+  },
+  "columnSettings": {
+    "title": "Kanban Columns",
+    "addColumn": "Add Column",
+    "cancel": "Cancel",
+    "save": "Save",
+    "label": "Label",
+    "color": "Color",
+    "creating": "Creating...",
+    "deleteConfirm": "Delete column \"{name}\"? Tasks in this column will become orphaned."
+  },
+  "common": {
+    "on": "On",
+    "off": "Off",
+    "loading": "Loading...",
+    "saving": "Saving..."
+  },
+  "notificationSettings": {
+    "title": "Notification Settings",
+    "saved": "Saved",
+    "macosSection": "macOS Notification Center",
+    "emailSection": "Email Notifications",
+    "smtpHost": "SMTP Host",
+    "port": "Port",
+    "smtpUser": "SMTP Username",
+    "smtpPass": "SMTP Password",
+    "fromAddr": "From Address",
+    "toAddrs": "To Addresses",
+    "toAddrsHint": "comma-separated",
+    "tipGmail": "<strong>Gmail tip:</strong> Use an <a href=\"https://support.google.com/accounts/answer/185833\" target=\"_blank\">App Password</a> instead of your login password. Enable 2FA first.",
+    "macosDesc": "Show macOS system notifications when tasks start, complete, or fail.",
+    "saveBtn": "Save",
+    "saveEmailBtn": "Save Email Settings"
   },
   "time": {
     "justNow": "just now",

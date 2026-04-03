@@ -1,7 +1,8 @@
 {
   "app": {
-    "title": "任务监控",
-    "loading": "正在加载任务监控...",
+    "title": "Tasks Watcher",
+    "settings": "设置",
+    "loading": "Loading Tasks Watcher...",
     "connectTitle": "任务监控",
     "connectHint": "运行 <code>tasks-watcher-server</code> 启动服务获取 API key，也可查看 <code>~/.tasks-watcher/api.key</code>",
     "apiKeyPlaceholder": "在此粘贴 API key",
@@ -29,6 +30,7 @@
     "projectDescPlaceholder": "项目描述（技术栈、目标等）...",
     "editDesc": "编辑描述",
     "save": "保存",
+    "cancel": "取消",
     "description": "描述"
   },
   "quickCreate": {
@@ -57,9 +59,65 @@
     "priority": "优先级",
     "project": "项目",
     "assignee": "负责人",
+    "source": "来源",
     "created": "创建于",
     "completed": "完成于",
-    "error": "错误"
+    "error": "错误",
+    "tabDetails": "详情",
+    "tabDependencies": "依赖",
+    "tabSubtasks": "子任务",
+    "mode": "模式"
+  },
+  "depPanel": {
+    "title": "依赖关系",
+    "noBlockers": "无阻塞任务",
+    "noDependents": "无被阻塞任务",
+    "blockedBy": "被以下阻塞",
+    "blocking": "阻塞以下",
+    "canStart": "✓ 可以开始",
+    "blocked": "🔒 已阻塞",
+    "addBlocker": "+ 添加阻塞..."
+  },
+  "subtaskPanel": {
+    "title": "子任务",
+    "noSubtasks": "暂无子任务",
+    "addSubtask": "+ 添加",
+    "cancelAdd": "− 取消",
+    "creating": "创建中...",
+    "create": "创建"
+  },
+  "columnSettings": {
+    "title": "看板列",
+    "addColumn": "添加列",
+    "cancel": "取消",
+    "save": "保存",
+    "label": "标签",
+    "color": "颜色",
+    "creating": "创建中...",
+    "deleteConfirm": "删除列 \"{name}\"？该列中的任务将变为无列归属。"
+  },
+  "common": {
+    "on": "开",
+    "off": "关",
+    "loading": "加载中...",
+    "saving": "保存中..."
+  },
+  "notificationSettings": {
+    "title": "通知设置",
+    "saved": "已保存",
+    "macosSection": "macOS 通知中心",
+    "emailSection": "邮件通知",
+    "smtpHost": "SMTP 主机",
+    "port": "端口",
+    "smtpUser": "SMTP 用户名",
+    "smtpPass": "SMTP 密码",
+    "fromAddr": "发件地址",
+    "toAddrs": "收件地址",
+    "toAddrsHint": "逗号分隔",
+    "tipGmail": "<strong>Gmail 提示：</strong>使用 <a href=\"https://support.google.com/accounts/answer/185833\" target=\"_blank\">应用密码</a> 而非登录密码。需先开启两步验证。",
+    "macosDesc": "任务开始、完成或失败时显示 macOS 系统通知。",
+    "saveBtn": "保存",
+    "saveEmailBtn": "保存邮件设置"
   },
   "time": {
     "justNow": "刚刚",

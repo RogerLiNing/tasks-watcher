@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { t } from '../lib/i18n/index.js';
   import { api } from '../lib/api.js';
   import { tasks } from '../lib/stores.js';
 
@@ -75,10 +76,10 @@
 
 <div class="dep-panel">
   <div class="section-header">
-    <span class="section-title">Dependencies</span>
+    <span class="section-title">{$t('depPanel.title')}</span>
     {#if !loading}
       <span class="can-start-badge" class:blocked={!canStartResult?.can_start}>
-        {canStartResult?.can_start ? '✓ Can start' : '🔒 Blocked'}
+        {canStartResult?.can_start ? $t('depPanel.canStart') : $t('depPanel.blocked')}
       </span>
     {/if}
   </div>
@@ -93,7 +94,7 @@
     <div class="dep-group">
       <p class="dep-label">Blocked by ({blockers.length})</p>
       {#if blockers.length === 0}
-        <p class="empty-hint">No blockers</p>
+        <p class="empty-hint">{$t('depPanel.noBlockers')}</p>
       {:else}
         {#each blockers as b (b.id)}
           <div class="dep-item">
@@ -108,7 +109,7 @@
     <div class="dep-group">
       <p class="dep-label">Blocking ({dependents.length})</p>
       {#if dependents.length === 0}
-        <p class="empty-hint">No dependent tasks</p>
+        <p class="empty-hint">{$t('depPanel.noDependents')}</p>
       {:else}
         {#each dependents as d (d.id)}
           <div class="dep-item">
@@ -122,7 +123,7 @@
     {#if availableBlockers.length > 0}
       <div class="add-blocker">
         <select bind:value={newBlockerId} on:change={addBlocker}>
-          <option value="">+ Add blocker...</option>
+          <option value="">{$t('depPanel.addBlocker')}</option>
           {#each availableBlockers as t (t.id)}
             <option value={t.id}>[{t.status}] {t.title}</option>
           {/each}

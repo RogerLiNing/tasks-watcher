@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { t, locale } from '../lib/i18n/index.js';
   import { api } from '../lib/api.js';
 
   export let task;
@@ -92,10 +93,10 @@
 
 <div class="subtask-panel">
   <div class="section-header">
-    <span class="section-title">Subtasks</span>
+    <span class="section-title">{$t('subtaskPanel.title')}</span>
     {#if !loading}
       <button class="add-btn" on:click={() => showCreateForm = !showCreateForm}>
-        {showCreateForm ? '− Cancel' : '+ Add'}
+        {showCreateForm ? $t('subtaskPanel.cancelAdd') : $t('subtaskPanel.addSubtask')}
       </button>
     {/if}
   </div>
@@ -136,7 +137,7 @@
         ></textarea>
         <div class="form-actions">
           <button class="create-submit" on:click={createSubtask} disabled={creating || !newTitle.trim()}>
-            {creating ? 'Creating...' : 'Create'}
+            {creating ? $t('subtaskPanel.creating') : $t('subtaskPanel.create')}
           </button>
         </div>
       </div>
@@ -145,7 +146,7 @@
     <div class="subtask-list">
       <p class="subtask-label">({subtasks.length})</p>
       {#if subtasks.length === 0 && !showCreateForm}
-        <p class="empty-hint">No subtasks yet</p>
+        <p class="empty-hint">{$t('subtaskPanel.noSubtasks')}</p>
       {:else}
         {#each subtasks as s, i (s.id)}
           <div class="subtask-item">

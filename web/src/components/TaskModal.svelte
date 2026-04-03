@@ -35,9 +35,9 @@
   }
 
   const tabs = [
-    { key: 'details', label: 'Details' },
-    { key: 'dependencies', label: 'Dependencies' },
-    { key: 'subtasks', label: 'Subtasks' },
+    { key: 'details', label: $t('taskModal.tabDetails') },
+    { key: 'dependencies', label: $t('taskModal.tabDependencies') },
+    { key: 'subtasks', label: $t('taskModal.tabSubtasks') },
   ];
 
   $: statuses = [
@@ -167,7 +167,7 @@
             {/if}
             {#if task.task_mode === 'sequential' || task.task_mode === 'parallel'}
               <div class="meta-item">
-                <span class="meta-label">Mode</span>
+                <span class="meta-label">{$t('taskModal.mode')}</span>
                 <span class="meta-value mode-badge" data-mode={task.task_mode}>{task.task_mode === 'sequential' ? '🔗 Sequential' : '⚡ Parallel'}</span>
               </div>
             {/if}

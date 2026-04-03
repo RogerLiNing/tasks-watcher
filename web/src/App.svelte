@@ -356,7 +356,7 @@
     </button>
     <div class="settings-panel" role="dialog">
       <div class="panel-header">
-        <h2>Settings</h2>
+        <h2>{$t('app.settings') || 'Settings'}</h2>
         <button class="close-btn" on:click={() => showSettings = false}>×</button>
       </div>
       <div class="settings-tabs">
