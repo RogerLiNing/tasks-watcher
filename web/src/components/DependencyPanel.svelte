@@ -98,7 +98,7 @@
         {#each blockers as b (b.id)}
           <div class="dep-item">
             <span class="dep-status" data-status={b.status}></span>
-            <span class="dep-title" on:click={() => openTask(b.id)}>{b.title}</span>
+            <button class="dep-title link-btn" on:click={() => openTask(b.id)}>{b.title}</button>
             <button class="remove-btn" on:click={() => removeBlocker(b.id)} title="Remove blocker">×</button>
           </div>
         {/each}
@@ -113,7 +113,7 @@
         {#each dependents as d (d.id)}
           <div class="dep-item">
             <span class="dep-status" data-status={d.status}></span>
-            <span class="dep-title" on:click={() => openTask(d.id)}>{d.title}</span>
+            <button class="dep-title link-btn" on:click={() => openTask(d.id)}>{d.title}</button>
           </div>
         {/each}
       {/if}
@@ -224,6 +224,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: #1d1d1f;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    text-align: left;
   }
   .dep-title:hover { color: #0071e3; }
 

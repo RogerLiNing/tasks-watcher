@@ -77,7 +77,7 @@
 </script>
 
 <div class="modal-backdrop" on:click={() => dispatch('close')} role="button" tabindex="-1" on:keydown={() => {}}>
-  <div class="modal" on:click|stopPropagation role="dialog">
+  <div class="modal" on:click|stopPropagation on:keydown|stopPropagation={() => {}} role="dialog">
     <div class="modal-header">
       <span class="status-indicator" style="background:{statusColor(task.status)}"></span>
       <span class="status-label">{$t('columns.' + task.status)}</span>
@@ -143,9 +143,9 @@
             <button class="cancel-btn" on:click={() => editing = false}>{$t('taskModal.cancel')}</button>
           </div>
         {:else}
-          <h2 class="task-title" on:click={() => editing = true}>{task.title}</h2>
+          <button class="task-title link-btn" on:click={() => editing = true}>{task.title}</button>
           {#if task.description}
-            <p class="task-desc" on:click={() => editing = true}>{getLocalizedDesc(task.description, $locale)}</p>
+            <button class="task-desc link-btn" on:click={() => editing = true}>{getLocalizedDesc(task.description, $locale)}</button>
           {/if}
           <div class="meta-grid">
             <div class="meta-item">
@@ -309,10 +309,25 @@
     color: #1d1d1f;
     cursor: pointer;
     margin-bottom: 0.5rem;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    width: 100%;
   }
-  .task-title:hover { color: #0071e3; }
 
-  .task-desc { font-size: 0.9rem; color: #6e6e73; margin-bottom: 1rem; white-space: pre-wrap; }
+  .task-desc {
+    font-size: 0.9rem;
+    color: #6e6e73;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+  }
 
   .meta-grid {
     display: grid;

@@ -45,6 +45,8 @@
   {#each boardColumns as col (col.key || col.id)}
     <div
       class="column"
+      role="group"
+      aria-label={col.label}
       on:drop={(e) => handleDrop(e, col.key)}
       on:dragover={handleDragOver}
       on:dragleave={handleDragLeave}
@@ -57,9 +59,13 @@
       <div class="column-cards">
         {#each (tasksByStatus[col.key] || []) as task (task.id)}
           <div
+            class="task-drag-card"
             draggable="true"
+            role="button"
+            tabindex="0"
             on:dragstart={(e) => handleDragStart(e, task)}
             on:click={() => dispatch('openTask', task)}
+            on:keydown={(e) => e.key === 'Enter' && dispatch('openTask', task)}
           >
             <TaskCard {task} />
           </div>
@@ -130,6 +136,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .task-drag-card {
+    cursor: pointer;
+    outline: none;
+  }
+  .task-drag-card:focus-visible {
+    outline: 2px solid #0071e3;
+    border-radius: 8px;
   }
 
   .empty-col {
