@@ -100,7 +100,12 @@
     "on": "On",
     "off": "Off",
     "loading": "Loading...",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "errors": {
+      "loadColumns": "Failed to load columns",
+      "loadSubtasks": "Failed to load subtasks",
+      "loadDeps": "Failed to load dependencies"
+    }
   },
   "notificationSettings": {
     "title": "Notification Settings",

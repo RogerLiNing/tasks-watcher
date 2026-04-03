@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/rogerrlee/tasks-watcher/internal/models"
@@ -11,13 +12,27 @@ import (
 type SSEHandler struct {
 	clients map[chan models.SSEEvent]struct{}
 	mu      sync.RWMutex
+	apiKey  string
 }
 
-func NewSSEHandler() *SSEHandler {
-	return &SSEHandler{clients: make(map[chan models.SSEEvent]struct{})}
+func NewSSEHandler(apiKey string) *SSEHandler {
+	return &SSEHandler{clients: make(map[chan models.SSEEvent]struct{}), apiKey: apiKey}
 }
 
 func (s *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Authenticate via query param (SSE can't use headers mid-stream)
+	key := r.URL.Query().Get("api_key")
+	if key == "" {
+		auth := r.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			key = strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+	if key != s.apiKey {
+		http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
+		return
+	}
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

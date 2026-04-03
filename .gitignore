@@ -1,6 +1,8 @@
 # Binaries
 /tasks-watcher
 /tasks-watcher-server
+server
+tw
 /tasks-watcher-cli
 /tasks-watcher-mcp
 /.tasks-watcher/bin/

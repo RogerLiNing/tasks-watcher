@@ -100,7 +100,12 @@
     "on": "开",
     "off": "关",
     "loading": "加载中...",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "errors": {
+      "loadColumns": "无法加载列",
+      "loadSubtasks": "无法加载子任务",
+      "loadDeps": "无法加载依赖关系"
+    }
   },
   "notificationSettings": {
     "title": "通知设置",

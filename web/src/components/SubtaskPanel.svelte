@@ -31,7 +31,7 @@
       subtasks = subRes.subtasks || [];
       parent = parentRes.parent || null;
     } catch (e) {
-      error = 'Failed to load subtasks';
+      error = $t('common.errors.loadSubtasks');
     }
     loading = false;
   }
@@ -106,7 +106,7 @@
   {/if}
 
   {#if loading}
-    <div class="loading">Loading...</div>
+    <div class="loading">{$t('common.loading')}</div>
   {:else}
     {#if parent}
       <div class="parent-link">

@@ -35,7 +35,7 @@
       dependents = depRes.dependents || [];
       canStartResult = canRes;
     } catch (e) {
-      addError = 'Failed to load dependencies';
+      addError = $t('common.errors.loadDeps');
     }
     loading = false;
   }
@@ -89,7 +89,7 @@
   {/if}
 
   {#if loading}
-    <div class="loading">Loading...</div>
+    <div class="loading">{$t('common.loading')}</div>
   {:else}
     <div class="dep-group">
       <p class="dep-label">Blocked by ({blockers.length})</p>

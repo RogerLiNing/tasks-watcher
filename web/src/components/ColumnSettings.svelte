@@ -27,7 +27,7 @@
       cols = res.columns || [];
       columns.set(cols);
     } catch (e) {
-      error = 'Failed to load columns';
+      error = $t('common.errors.loadColumns');
     }
     loading = false;
   }

@@ -27,13 +27,13 @@ func main() {
 	}
 	defer database.Close()
 
-	sse := api.NewSSEHandler()
+	sse := api.NewSSEHandler(cfg.APIKey)
 	dispatcher := notifications.NewDispatcher(database, sse)
 
 	router := mux.NewRouter()
 	auth := api.NewAuthMiddleware(cfg)
 
-	// SSE endpoint (no auth required)
+	// SSE endpoint (auth via query param ?api_key=...)
 	router.HandleFunc("/api/events", sse.ServeHTTP)
 
 	// Health check (no auth)

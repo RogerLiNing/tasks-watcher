@@ -119,7 +119,7 @@
     </div>
 
     {#if loading}
-      <div class="loading">Loading...</div>
+      <div class="loading">{$t('common.loading')}</div>
     {:else}
       <div class="panel-body">
 
