@@ -193,13 +193,13 @@
         selectedTask = updated;
       }
     } catch (e) {
-      let msg = 'Failed to update status';
+      let msg = $t('toast.failedStatusUpdate');
       try {
         const errData = JSON.parse(e.message);
         if (errData.error === 'task is blocked') {
-          msg = 'Task is blocked';
+          msg = $t('toast.taskBlocked');
           if (errData.blockers?.length) msg += ': ' + errData.blockers.join(', ');
-          else if (errData.child_titles?.length) msg += ' (has non-terminal subtasks): ' + errData.child_titles.join(', ');
+          else if (errData.child_titles?.length) msg += ' (' + $t('toast.hasNonTerminal') + '): ' + errData.child_titles.join(', ');
         } else {
           msg = errData.error || msg;
         }
@@ -276,7 +276,7 @@
             <span class="badge">{$unreadCount}</span>
           {/if}
         </button>
-        <button class="icon-btn settings-btn" on:click={() => showSettings = true} title="Settings">⚙</button>
+        <button class="icon-btn settings-btn" on:click={() => showSettings = true} title={$t('app.settings')}>⚙</button>
         <select class="source-filter" bind:value={$selectedSource}>
           <option value="">{$t('sources.all')}</option>
           <option value="claude-code">{$t('sources.claude-code')}</option>
@@ -284,7 +284,7 @@
           <option value="manual">{$t('sources.manual')}</option>
         </select>
         <select class="project-filter" bind:value={$selectedProjectId}>
-          <option value="">{$t('projects.allProjects') || 'All Projects'}</option>
+          <option value="">{$t('projects.allProjects')}</option>
           {#each $projects as p (p.id)}
             <option value={p.id}>{p.name}</option>
           {/each}
@@ -309,7 +309,7 @@
             removeProjectFromStore(p.id);
             if ($selectedProjectId === p.id) selectedProjectId.set('');
           } catch (e) {
-            showToast('Failed to delete project: ' + e.message);
+            showToast($t('toast.failedDeleteProject') + ': ' + e.message);
           }
         }}
       />

@@ -136,11 +136,11 @@
                 rows="3"
               ></textarea>
               <label class="repo-input-label">
-                Repo path
+                {$t('sidebar.repoPath')}
                 <input
                   class="repo-input"
                   bind:value={editRepoPath}
-                  placeholder="/path/to/your/git/repo"
+                  placeholder={$t('sidebar.repoPathPlaceholder')}
                 />
               </label>
               <div class="desc-actions">
@@ -159,7 +159,7 @@
                   {$t('sidebar.editDesc')}
                 </button>
                 <button class="delete-project-btn" on:click={() => deleteProject(project)}>
-                  Delete project
+                  {$t('sidebar.deleteProject')}
                 </button>
               </div>
             {/if}

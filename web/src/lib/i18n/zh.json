@@ -1,12 +1,18 @@
 {
   "app": {
-    "title": "Tasks Watcher",
+    "title": "任务监控",
     "settings": "设置",
     "loading": "Loading Tasks Watcher...",
     "connectTitle": "任务监控",
     "connectHint": "运行 <code>tasks-watcher-server</code> 启动服务获取 API key，也可查看 <code>~/.tasks-watcher/api.key</code>",
     "apiKeyPlaceholder": "在此粘贴 API key",
     "connectBtn": "连接"
+  },
+  "toast": {
+    "failedStatusUpdate": "状态更新失败",
+    "taskBlocked": "任务被阻塞",
+    "hasNonTerminal": "包含未完成的子任务",
+    "failedDeleteProject": "删除项目失败"
   },
   "columns": {
     "pending": "待处理",
@@ -21,6 +27,9 @@
     "cursor": "Cursor",
     "manual": "手动创建"
   },
+  "projects": {
+    "allProjects": "全部项目"
+  },
   "sidebar": {
     "projects": "项目",
     "allTasks": "全部任务",
@@ -31,7 +40,10 @@
     "editDesc": "编辑描述",
     "save": "保存",
     "cancel": "取消",
-    "description": "描述"
+    "description": "描述",
+    "repoPath": "仓库路径",
+    "repoPathPlaceholder": "/path/to/your/git/repo",
+    "deleteProject": "删除项目"
   },
   "quickCreate": {
     "placeholder": "添加任务... (按回车)",

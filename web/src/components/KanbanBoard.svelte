@@ -8,12 +8,12 @@
 
   const dispatch = createEventDispatcher();
 
-  const defaultColumns = [
-    { key: 'pending', label: 'Pending', color: '#86868b' },
-    { key: 'in_progress', label: 'In Progress', color: '#0071e3' },
-    { key: 'completed', label: 'Completed', color: '#34c759' },
-    { key: 'failed', label: 'Failed', color: '#ff3b30' },
-    { key: 'cancelled', label: 'Cancelled', color: '#ff9500' },
+  $: defaultColumns = [
+    { key: 'pending', label: $t('columns.pending'), color: '#86868b' },
+    { key: 'in_progress', label: $t('columns.in_progress'), color: '#0071e3' },
+    { key: 'completed', label: $t('columns.completed'), color: '#34c759' },
+    { key: 'failed', label: $t('columns.failed'), color: '#ff3b30' },
+    { key: 'cancelled', label: $t('columns.cancelled'), color: '#ff9500' },
   ];
 
   $: boardColumns = $columns.length > 0 ? $columns : defaultColumns;

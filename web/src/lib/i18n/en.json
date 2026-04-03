@@ -8,6 +8,12 @@
     "apiKeyPlaceholder": "Paste your API key here",
     "connectBtn": "Connect"
   },
+  "toast": {
+    "failedStatusUpdate": "Failed to update status",
+    "taskBlocked": "Task is blocked",
+    "hasNonTerminal": "has non-terminal subtasks",
+    "failedDeleteProject": "Failed to delete project"
+  },
   "columns": {
     "pending": "Pending",
     "in_progress": "In Progress",
@@ -21,6 +27,9 @@
     "cursor": "Cursor",
     "manual": "Manual"
   },
+  "projects": {
+    "allProjects": "All Projects"
+  },
   "sidebar": {
     "projects": "Projects",
     "allTasks": "All Tasks",
@@ -31,7 +40,10 @@
     "editDesc": "Edit description",
     "save": "Save",
     "cancel": "Cancel",
-    "description": "Description"
+    "description": "Description",
+    "repoPath": "Repo path",
+    "repoPathPlaceholder": "/path/to/your/git/repo",
+    "deleteProject": "Delete project"
   },
   "quickCreate": {
     "placeholder": "Add a task... (press Enter)",
