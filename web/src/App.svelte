@@ -12,15 +12,18 @@
   import { locale, t, locales } from './lib/i18n/index.js';
   import ProjectSidebar from './components/ProjectSidebar.svelte';
   import NotificationSettings from './components/NotificationSettings.svelte';
+  import ColumnSettings from './components/ColumnSettings.svelte';
   import KanbanBoard from './components/KanbanBoard.svelte';
   import TaskModal from './components/TaskModal.svelte';
   import NotificationsPanel from './components/NotificationsPanel.svelte';
   import QuickCreate from './components/QuickCreate.svelte';
+  import { columns } from './lib/stores.js';
 
   let selectedTask = null;
   let loading = true;
   let authError = false;
   let showSettings = false;
+  let settingsTab = 'notifications'; // 'notifications' | 'columns'
   let toastMessage = '';
   let toastVisible = false;
   let toastTimer;
@@ -46,6 +49,13 @@
         console.error('Failed to load data', e);
         loading = false;
       }
+    }
+    // Load columns non-blocking — old servers may not have this endpoint
+    try {
+      const colData = await api.listColumns();
+      columns.set(colData.columns || []);
+    } catch (_) {
+      // Columns not supported by this server version; use defaults
     }
   }
 
@@ -134,6 +144,18 @@
           break;
         case 'project.deleted':
           removeProjectFromStore(event.payload.id);
+          break;
+        case 'column.created':
+          columns.update(cols => {
+            if (cols.find(c => c.id === event.payload.id)) return cols;
+            return [...cols, event.payload];
+          });
+          break;
+        case 'column.updated':
+          columns.update(cols => cols.map(c => c.id === event.payload.id ? event.payload : c));
+          break;
+        case 'column.deleted':
+          columns.update(cols => cols.filter(c => c.id !== event.payload.id));
           break;
       }
     });
@@ -260,6 +282,12 @@
           <option value="cursor">{$t('sources.cursor')}</option>
           <option value="manual">{$t('sources.manual')}</option>
         </select>
+        <select class="project-filter" bind:value={$selectedProjectId}>
+          <option value="">{$t('projects.allProjects') || 'All Projects'}</option>
+          {#each $projects as p (p.id)}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
       </div>
     </header>
 
@@ -273,6 +301,16 @@
           addProjectToStore(p);
         }}
         on:updateProject={(e) => updateProjectInStore(e.detail)}
+        on:deleteProject={async (e) => {
+          const p = e.detail;
+          try {
+            await api.deleteProject(p.id);
+            removeProjectFromStore(p.id);
+            if ($selectedProjectId === p.id) selectedProjectId.set('');
+          } catch (e) {
+            showToast('Failed to delete project: ' + e.message);
+          }
+        }}
       />
       <main class="content">
         <KanbanBoard
@@ -313,7 +351,29 @@
   {/if}
 
   {#if showSettings}
-    <NotificationSettings onClose={() => showSettings = false} />
+    <div class="settings-overlay" on:click={() => showSettings = false} role="button" tabindex="-1" on:keydown={() => {}}>
+      <div class="settings-panel" on:click|stopPropagation role="dialog">
+        <div class="panel-header">
+          <h2>Settings</h2>
+          <button class="close-btn" on:click={() => showSettings = false}>×</button>
+        </div>
+        <div class="settings-tabs">
+          <button class="tab-btn" class:active={settingsTab === 'notifications'} on:click={() => settingsTab = 'notifications'}>
+            Notifications
+          </button>
+          <button class="tab-btn" class:active={settingsTab === 'columns'} on:click={() => settingsTab = 'columns'}>
+            Kanban Columns
+          </button>
+        </div>
+        <div class="settings-body">
+          {#if settingsTab === 'notifications'}
+            <NotificationSettings onClose={() => showSettings = false} />
+          {:else}
+            <ColumnSettings />
+          {/if}
+        </div>
+      </div>
+    </div>
   {/if}
 
   {#if toastVisible}
@@ -324,6 +384,77 @@
 <style>
   :global(*) { box-sizing: border-box; }
   :global(body) { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1d1d1f; }
+
+  .settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+  }
+
+  .settings-panel {
+    background: white;
+    border-radius: 16px;
+    width: 580px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #e5e5ea;
+    flex-shrink: 0;
+  }
+
+  .panel-header h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #86868b;
+    padding: 0 0.5rem;
+    line-height: 1;
+  }
+
+  .settings-tabs {
+    display: flex;
+    border-bottom: 1px solid #e5e5ea;
+    padding: 0 1.5rem;
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #6e6e73;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+
+  .tab-btn:hover { color: #1d1d1f; }
+  .tab-btn.active { color: #0071e3; border-bottom-color: #0071e3; font-weight: 600; }
+
+  .settings-body {
+    flex: 1;
+    overflow-y: auto;
+  }
 
   .loading-screen, .setup-screen {
     display: flex;
@@ -464,6 +595,16 @@
     outline: none;
   }
   .source-filter:focus { border-color: #0071e3; }
+  .project-filter {
+    padding: 4px 8px;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    background: white;
+    cursor: pointer;
+    outline: none;
+  }
+  .project-filter:focus { border-color: #0071e3; }
 
   .badge {
     position: absolute;

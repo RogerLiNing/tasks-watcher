@@ -61,6 +61,7 @@ func main() {
 	webhookHandler := api.NewWebhookHandler(database)
 	depHandler := api.NewDepHandler(database, sse)
 	subtaskHandler := api.NewSubtaskHandler(database, sse)
+	columnHandler := api.NewColumnHandler(database, sse)
 
 	// Register on subrouter — handlers use paths WITHOUT /api prefix (subrouter handles it)
 	projectHandler.Register(apiRouter)
@@ -71,6 +72,7 @@ func main() {
 	webhookHandler.Register(apiRouter)
 	depHandler.Register(apiRouter)
 	subtaskHandler.Register(apiRouter)
+	columnHandler.Register(apiRouter)
 
 	// Config endpoint
 	apiRouter.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {

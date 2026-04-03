@@ -10,10 +10,29 @@
   const dispatch = createEventDispatcher();
   let editing = false;
   let editTitle = task.title;
-  let editDesc = task.description || '';
+  let editDesc = '';
   let editPriority = task.priority;
   let editProjectId = task.project_id;
+  let editTaskMode = task.task_mode || '';
   let activeTab = 'details';
+
+  // Extract description for current locale; fall back to raw string (legacy data)
+  function getLocalizedDesc(desc, loc) {
+    if (!desc) return '';
+    if (typeof desc === 'object') {
+      return desc[loc] || desc['en'] || desc['zh'] || desc['_raw'] || Object.values(desc)[0] || '';
+    }
+    return desc;
+  }
+
+  // Initialize editDesc when task prop changes
+  $: {
+    editDesc = getLocalizedDesc(task.description, $locale);
+    editTitle = task.title;
+    editPriority = task.priority;
+    editProjectId = task.project_id;
+    editTaskMode = task.task_mode || '';
+  }
 
   const tabs = [
     { key: 'details', label: 'Details' },
@@ -37,9 +56,10 @@
     const updated = {
       ...task,
       title: editTitle,
-      description: editDesc,
+      description: { [$locale]: editDesc },
       priority: editPriority,
       project_id: editProjectId,
+      task_mode: editTaskMode,
     };
     dispatch('update', updated);
     editing = false;
@@ -103,6 +123,21 @@
               </select>
             </label>
           </div>
+          <div class="edit-row edit-mode-row">
+            <span class="mode-label">Task mode:</span>
+            <label class="mode-radio">
+              <input type="radio" bind:group={editTaskMode} value="" />
+              Default (parallel)
+            </label>
+            <label class="mode-radio">
+              <input type="radio" bind:group={editTaskMode} value="sequential" />
+              🔗 Sequential
+            </label>
+            <label class="mode-radio">
+              <input type="radio" bind:group={editTaskMode} value="parallel" />
+              ⚡ Parallel
+            </label>
+          </div>
           <div class="edit-actions">
             <button class="save-btn" on:click={saveEdit}>{$t('taskModal.save')}</button>
             <button class="cancel-btn" on:click={() => editing = false}>{$t('taskModal.cancel')}</button>
@@ -110,7 +145,7 @@
         {:else}
           <h2 class="task-title" on:click={() => editing = true}>{task.title}</h2>
           {#if task.description}
-            <p class="task-desc" on:click={() => editing = true}>{task.description}</p>
+            <p class="task-desc" on:click={() => editing = true}>{getLocalizedDesc(task.description, $locale)}</p>
           {/if}
           <div class="meta-grid">
             <div class="meta-item">
@@ -127,6 +162,12 @@
               <div class="meta-item">
                 <span class="meta-label">{$t('taskModal.source')}</span>
                 <span class="meta-value source-badge" data-source={task.source}>{$t('sources.' + task.source) || task.source}</span>
+              </div>
+            {/if}
+            {#if task.task_mode === 'sequential' || task.task_mode === 'parallel'}
+              <div class="meta-item">
+                <span class="meta-label">Mode</span>
+                <span class="meta-value mode-badge" data-mode={task.task_mode}>{task.task_mode === 'sequential' ? '🔗 Sequential' : '⚡ Parallel'}</span>
               </div>
             {/if}
             <div class="meta-item">
@@ -292,6 +333,34 @@
 
   .source-badge[data-source="claude-code"] { color: #7c3aed; font-weight: 600; }
   .source-badge[data-source="cursor"] { color: #0891b2; font-weight: 600; }
+
+  .mode-badge[data-mode="sequential"] { color: #0071e3; font-weight: 600; }
+  .mode-badge[data-mode="parallel"] { color: #34c759; font-weight: 600; }
+
+  .edit-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+  }
+
+  .mode-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #86868b;
+  }
+
+  .mode-radio {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: #1d1d1f;
+    cursor: pointer;
+  }
+  .mode-radio input { cursor: pointer; }
 
   .edit-btn {
     background: none;

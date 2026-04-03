@@ -26,17 +26,22 @@ type TaskWithRelations struct {
 
 // CanStartResult is returned by the can-start check.
 type CanStartResult struct {
-	CanStart  bool     `json:"can_start"`
-	Blockers  []string `json:"blockers"` // titles of incomplete blockers
-	HasChildren bool   `json:"has_children"`
-	ChildTitles []string `json:"child_titles,omitempty"`
+	CanStart           bool     `json:"can_start"`
+	Blockers           []string `json:"blockers"` // titles of incomplete blockers
+	HasChildren       bool     `json:"has_children"`
+	ChildTitles       []string `json:"child_titles,omitempty"`
+	BlockedBySequential bool   `json:"blocked_by_sequential,omitempty"` // true if blocked by previous sequential sibling
+	SequentialBlocker  string   `json:"sequential_blocker,omitempty"`  // title of the blocking sibling
 }
 
 // Event types for dependencies and subtasks
 const (
-	EventDependencyAdded      = "task.dependency.added"
-	EventDependencyRemoved    = "task.dependency.removed"
-	EventSubtaskAdded        = "task.subtask.added"
-	EventSubtaskRemoved      = "task.subtask.removed"
+	EventDependencyAdded       = "task.dependency.added"
+	EventDependencyRemoved   = "task.dependency.removed"
+	EventSubtaskAdded       = "task.subtask.added"
+	EventSubtaskRemoved     = "task.subtask.removed"
 	EventSubtaskStatusChanged = "task.subtask.status_changed"
+	EventColumnCreated      = "column.created"
+	EventColumnUpdated      = "column.updated"
+	EventColumnDeleted      = "column.deleted"
 )

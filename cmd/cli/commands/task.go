@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,8 +19,9 @@ func TaskCommand() *cobra.Command {
 	taskCmd := &cobra.Command{
 		Use:   "task",
 		Short: "Manage tasks",
-		Long:  "Create, list, update, and delete tasks. Each task is tagged with its source.",
+		Long:  "Create, list, update, and delete tasks. Each task is tagged with its source. Tasks can be marked as sequential (children must complete in order) or parallel (children run independently).",
 		Example: `  tasks-watcher task create -t "Fix auth bug" -P high -p myproject
+  tasks-watcher task create -t "Multi-step refactor" --task-mode sequential
   tasks-watcher task list -s pending
   tasks-watcher task start <task-id>
   tasks-watcher task complete <task-id>
@@ -82,7 +86,7 @@ func apiRequest(method, path string, body interface{}) ([]byte, error) {
 }
 
 func taskCreateCmd() *cobra.Command {
-	var project, title, description, priority, assignee string
+	var project, title, description, priority, assignee, taskMode string
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -97,12 +101,25 @@ func taskCreateCmd() *cobra.Command {
 			}
 			if project != "" {
 				body["project_name"] = project
+			} else {
+				// Auto-detect current git repo and associate project
+				projID, repoPath, err := resolveProjectFromGit()
+				if err != nil {
+					return fmt.Errorf("failed to resolve project from git: %w", err)
+				}
+				if projID != "" {
+					body["project_id"] = projID
+					fmt.Printf("📁 Auto-linked to project: %s (%s)\n", repoPath, projID[:8])
+				}
 			}
 			if priority != "" {
 				body["priority"] = priority
 			}
 			if assignee != "" {
 				body["assignee"] = assignee
+			}
+			if taskMode != "" {
+				body["task_mode"] = taskMode
 			}
 
 			resp, err := apiRequest("POST", "/api/tasks", body)
@@ -117,11 +134,12 @@ func taskCreateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
+	cmd.Flags().StringVarP(&project, "project", "p", "", "Project name (auto-detected from git repo if omitted)")
 	cmd.Flags().StringVarP(&title, "title", "t", "", "Task title (required)")
 	cmd.Flags().StringVarP(&description, "description", "d", "", "Task description")
 	cmd.Flags().StringVarP(&priority, "priority", "P", "medium", "Priority: low, medium, high, urgent")
 	cmd.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
+	cmd.Flags().StringVar(&taskMode, "task-mode", "", "Task mode: sequential or parallel")
 	cmd.MarkFlagRequired("title")
 	return cmd
 }
@@ -321,4 +339,63 @@ func taskHeartbeatCmd() *cobra.Command {
 			return err
 		},
 	}
+}
+
+// detectGitRepo walks up from the current directory looking for .git
+func detectGitRepo() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for dir := cwd; dir != ""; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			abs, _ := filepath.Abs(dir)
+			return abs
+		}
+		if dir == filepath.Dir(dir) {
+			break
+		}
+	}
+	return ""
+}
+
+// resolveProjectFromGit calls GET /projects/by-repo?repo_path=... to find or create
+// the project for the current git repository.
+func resolveProjectFromGit() (string, string, error) {
+	repoPath := detectGitRepo()
+	if repoPath == "" {
+		return "", "", nil
+	}
+	// Use exec.Command for git rev-parse as a fallback / validation
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").CombinedOutput()
+	if err != nil {
+		return "", repoPath, nil
+	}
+	repoPath = strings.TrimSpace(string(out))
+
+	serverURL, apiKey := resolveConfig()
+	url := serverURL + "/api/projects/by-repo?repo_path=" + repoPath
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", repoPath, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", repoPath, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", repoPath, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+	}
+	var proj struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &proj); err != nil {
+		return "", repoPath, fmt.Errorf("invalid response: %w", err)
+	}
+	return proj.ID, repoPath, nil
 }

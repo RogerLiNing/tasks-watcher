@@ -12,6 +12,7 @@
   let showNewProject = false;
   let expandedId = '';
   let editDesc = '';
+  let editRepoPath = '';
   let editingDesc = false;
 
   async function createProject() {
@@ -37,6 +38,7 @@
     } else {
       expandedId = project.id;
       editDesc = project.description || '';
+      editRepoPath = project.repo_path || '';
       editingDesc = false;
     }
   }
@@ -46,12 +48,12 @@
   }
 
   async function saveDesc(project) {
-    if (editDesc === (project.description || '')) {
+    if (editDesc === (project.description || '') && editRepoPath === (project.repo_path || '')) {
       editingDesc = false;
       return;
     }
     try {
-      const updated = await api.updateProject(project.id, { description: editDesc });
+      const updated = await api.updateProject(project.id, { description: editDesc, repo_path: editRepoPath });
       dispatch('updateProject', updated);
       editingDesc = false;
     } catch (e) {
@@ -62,7 +64,13 @@
   function cancelEdit() {
     const proj = projects.find(p => p.id === expandedId);
     editDesc = proj ? (proj.description || '') : '';
+    editRepoPath = proj ? (proj.repo_path || '') : '';
     editingDesc = false;
+  }
+
+  async function deleteProject(project) {
+    if (!confirm(`Delete project "${project.name}"? All tasks in this project will also be deleted.`)) return;
+    dispatch('deleteProject', project);
   }
 </script>
 
@@ -127,6 +135,14 @@
                 placeholder={$t('sidebar.projectDescPlaceholder')}
                 rows="3"
               ></textarea>
+              <label class="repo-input-label">
+                Repo path
+                <input
+                  class="repo-input"
+                  bind:value={editRepoPath}
+                  placeholder="/path/to/your/git/repo"
+                />
+              </label>
               <div class="desc-actions">
                 <button class="save-btn" on:click={() => saveDesc(project)}>{$t('sidebar.save')}</button>
                 <button class="cancel-btn" on:click={cancelEdit}>{$t('taskModal.cancel')}</button>
@@ -135,9 +151,17 @@
               {#if project.description}
                 <p class="desc-text">{project.description}</p>
               {/if}
-              <button class="edit-desc-btn" on:click={startEditDesc}>
-                {$t('sidebar.editDesc')}
-              </button>
+              {#if project.repo_path}
+                <p class="repo-path">📁 {project.repo_path}</p>
+              {/if}
+              <div class="detail-actions">
+                <button class="edit-desc-btn" on:click={startEditDesc}>
+                  {$t('sidebar.editDesc')}
+                </button>
+                <button class="delete-project-btn" on:click={() => deleteProject(project)}>
+                  Delete project
+                </button>
+              </div>
             {/if}
           </div>
         {/if}
@@ -266,9 +290,38 @@
     font-size: 0.8rem;
     color: #6e6e73;
     white-space: pre-wrap;
-    margin: 0;
+    margin: 0 0 0.25rem;
     line-height: 1.4;
   }
+
+  .repo-path {
+    font-size: 0.75rem;
+    color: #86868b;
+    margin: 0 0 0.4rem;
+    font-family: monospace;
+    word-break: break-all;
+  }
+
+  .repo-input-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6e6e73;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .repo-input {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    outline: none;
+  }
+  .repo-input:focus { border-color: #0071e3; }
 
   .desc-edit {
     width: 100%;
@@ -304,6 +357,8 @@
     color: #6e6e73;
   }
 
+  .detail-actions { display: flex; gap: 0.5rem; align-items: center; }
+
   .edit-desc-btn {
     background: none;
     border: none;
@@ -314,4 +369,14 @@
     text-align: left;
   }
   .edit-desc-btn:hover { text-decoration: underline; }
+
+  .delete-project-btn {
+    background: none;
+    border: none;
+    color: #ff3b30;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+  }
+  .delete-project-btn:hover { text-decoration: underline; }
 </style>

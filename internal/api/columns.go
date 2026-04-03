@@ -1,0 +1,149 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/rogerrlee/tasks-watcher/internal/db"
+	"github.com/rogerrlee/tasks-watcher/internal/models"
+)
+
+type ColumnHandler struct {
+	db  *db.DB
+	sse *SSEHandler
+}
+
+func NewColumnHandler(database *db.DB, sse *SSEHandler) *ColumnHandler {
+	return &ColumnHandler{db: database, sse: sse}
+}
+
+type createColumnReq struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Color    string `json:"color"`
+	Position int    `json:"position"`
+}
+
+type updateColumnReq struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Color    string `json:"color"`
+	Position int    `json:"position"`
+}
+
+func (h *ColumnHandler) List(w http.ResponseWriter, r *http.Request) {
+	cols, err := h.db.ListColumns()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"columns": cols})
+}
+
+func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req createColumnReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Key == "" || req.Label == "" {
+		http.Error(w, `{"error":"key and label are required"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Color == "" {
+		req.Color = "#86868b"
+	}
+	cols, _ := h.db.ListColumns()
+	position := req.Position
+	if position == 0 {
+		position = len(cols)
+	}
+	c := &models.TaskColumn{
+		Key:      req.Key,
+		Label:    req.Label,
+		Color:   req.Color,
+		Position: position,
+	}
+	if err := h.db.CreateColumn(c); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	BroadcastTaskEvent(h.sse, models.EventColumnCreated, c)
+	json.NewEncoder(w).Encode(c)
+}
+
+func (h *ColumnHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var req updateColumnReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	cols, err := h.db.ListColumns()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	var col models.TaskColumn
+	found := false
+	for _, c := range cols {
+		if c.ID == id {
+			col = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, `{"error":"column not found"}`, http.StatusNotFound)
+		return
+	}
+	if req.Label != "" {
+		col.Label = req.Label
+	}
+	if req.Color != "" {
+		col.Color = req.Color
+	}
+	col.Position = req.Position
+	if err := h.db.UpdateColumn(&col); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	BroadcastTaskEvent(h.sse, models.EventColumnUpdated, &col)
+	json.NewEncoder(w).Encode(&col)
+}
+
+func (h *ColumnHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	// Check column exists
+	cols, err := h.db.ListColumns()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	found := false
+	for _, c := range cols {
+		if c.ID == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, `{"error":"column not found"}`, http.StatusNotFound)
+		return
+	}
+	if err := h.db.DeleteColumn(id); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	BroadcastTaskEvent(h.sse, models.EventColumnDeleted, map[string]string{"id": id})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *ColumnHandler) Register(router *mux.Router) {
+	r := router.PathPrefix("/columns").Subrouter()
+	r.HandleFunc("", h.List).Methods("GET")
+	r.HandleFunc("", h.Create).Methods("POST")
+	r.HandleFunc("/{id}", h.Update).Methods("PUT")
+	r.HandleFunc("/{id}", h.Delete).Methods("DELETE")
+}

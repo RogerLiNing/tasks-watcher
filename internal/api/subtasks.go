@@ -20,17 +20,24 @@ func NewSubtaskHandler(database *db.DB, sse *SSEHandler) *SubtaskHandler {
 
 type createSubtaskReq struct {
 	Title       string `json:"title"`
-	Description string `json:"description"`
+	Description any    `json:"description"`
+	Locale      string `json:"locale"`
 	Priority    string `json:"priority"`
 	Assignee    string `json:"assignee"`
 }
 
 type addSubtaskReq struct {
-	ChildID string `json:"child_id"` // existing task to link as subtask
-	Title   string `json:"title"`    // create new task as subtask
-	Description string `json:"description"`
-	Priority string `json:"priority"`
-	Assignee string `json:"assignee"`
+	ChildID     string `json:"child_id"`
+	Title       string `json:"title"`
+	Description any    `json:"description"`
+	Locale      string `json:"locale"`
+	Priority    string `json:"priority"`
+	Assignee    string `json:"assignee"`
+	Position    int    `json:"position"` // optional; auto-assigned if not provided
+}
+
+type reorderSubtaskReq struct {
+	Position int `json:"position"`
 }
 
 func (h *SubtaskHandler) ListSubtasks(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +50,20 @@ func (h *SubtaskHandler) ListSubtasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []models.Task{}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"subtasks": tasks})
+	posMap, err := h.db.GetSubtaskPositions(id)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"subtasks": tasks})
+		return
+	}
+	type taskWithPos struct {
+		models.Task
+		Position int `json:"position"`
+	}
+	taskList := make([]taskWithPos, len(tasks))
+	for i, t := range tasks {
+		taskList[i] = taskWithPos{Task: t, Position: posMap[t.ID]}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"subtasks": taskList})
 }
 
 func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
@@ -91,10 +111,19 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		priority = models.Priority(req.Priority)
 	}
 
+	locale := req.Locale
+	if locale == "" {
+		locale = "en"
+	}
+	desc := map[string]string{}
+	if req.Description != nil {
+		desc = models.MergeDescription(nil, req.Description)
+	}
+
 	t := &models.Task{
 		ProjectID:   parent.ProjectID,
 		Title:       req.Title,
-		Description: req.Description,
+		Description: desc,
 		Status:      models.TaskStatusPending,
 		Priority:    priority,
 		Assignee:    req.Assignee,
@@ -148,10 +177,31 @@ func (h *SubtaskHandler) GetParent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"parent": task})
 }
 
+// ReorderSubtask moves a subtask to a new position within its parent.
+func (h *SubtaskHandler) ReorderSubtask(w http.ResponseWriter, r *http.Request) {
+	parentID := mux.Vars(r)["id"]
+	childID := mux.Vars(r)["childId"]
+	var req reorderSubtaskReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if err := h.db.SetSubtaskPosition(parentID, childID, req.Position); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	BroadcastTaskEvent(h.sse, "task.subtask.reordered", map[string]string{
+		"parent_id": parentID,
+		"child_id":  childID,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *SubtaskHandler) Register(router *mux.Router) {
 	r := router.PathPrefix("/tasks/{id}").Subrouter()
 	r.HandleFunc("/subtasks", h.ListSubtasks).Methods("GET")
 	r.HandleFunc("/subtasks", h.AddSubtask).Methods("POST")
 	r.HandleFunc("/subtasks/{childId}", h.RemoveSubtask).Methods("DELETE")
+	r.HandleFunc("/subtasks/{childId}/position", h.ReorderSubtask).Methods("PATCH")
 	r.HandleFunc("/parent", h.GetParent).Methods("GET")
 }

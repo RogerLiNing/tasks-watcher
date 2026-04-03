@@ -22,17 +22,18 @@ type Client struct {
 
 // Task and Project types
 type Task struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Priority    string `json:"priority"`
-	Assignee    string `json:"assignee"`
-	ErrorMsg    string `json:"error_message,omitempty"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
-	CompletedAt int64  `json:"completed_at,omitempty"`
+	ID          string            `json:"id"`
+	ProjectID   string            `json:"project_id"`
+	Title       string            `json:"title"`
+	Description map[string]string `json:"description"`
+	Status      string            `json:"status"`
+	Priority    string            `json:"priority"`
+	Assignee    string            `json:"assignee"`
+	TaskMode    string            `json:"task_mode"`
+	ErrorMsg    string            `json:"error_message,omitempty"`
+	CreatedAt   int64             `json:"created_at"`
+	UpdatedAt   int64             `json:"updated_at"`
+	CompletedAt int64             `json:"completed_at,omitempty"`
 }
 
 type Project struct {
@@ -110,17 +111,29 @@ func (c *Client) TaskCreate(args map[string]interface{}) (*mcp.ToolsCallResult, 
 	}
 
 	body := map[string]interface{}{"title": title, "source": "claude-code"}
-	if desc := str(args["description"], ""); desc != "" {
-		body["description"] = desc
-	}
+
+	// Resolve project: explicit project_name > auto-detect git repo > default
 	if proj := str(args["project_name"], ""); proj != "" {
 		body["project_name"] = proj
+	} else if repoPath := detectGitRepo(); repoPath != "" {
+		projectID, err := c.getOrCreateProjectByRepo(repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve project from repo: %w", err)
+		}
+		body["project_id"] = projectID
+	}
+
+	if desc := str(args["description"], ""); desc != "" {
+		body["description"] = desc
 	}
 	if pri := str(args["priority"], "medium"); pri != "" {
 		body["priority"] = pri
 	}
 	if asgn := str(args["assignee"], ""); asgn != "" {
 		body["assignee"] = asgn
+	}
+	if mode := str(args["task_mode"], ""); mode != "" {
+		body["task_mode"] = mode
 	}
 
 	data, status, err := c.do("POST", "/api/tasks", body)
@@ -222,10 +235,10 @@ func (c *Client) TaskShow(args map[string]interface{}) (*mcp.ToolsCallResult, er
 		return nil, fmt.Errorf("invalid response: %w", err)
 	}
 
-	text := fmt.Sprintf("Task: %s\nID: %s\nStatus: %s\nPriority: %s\nAssignee: %s\nCreated: %d",
-		task.Title, task.ID, task.Status, task.Priority, task.Assignee, task.CreatedAt)
-	if task.Description != "" {
-		text += fmt.Sprintf("\nDescription: %s", task.Description)
+	text := fmt.Sprintf("Task: %s\nID: %s\nStatus: %s\nPriority: %s\nAssignee: %s\nTaskMode: %s\nCreated: %d",
+		task.Title, task.ID, task.Status, task.Priority, task.Assignee, task.TaskMode, task.CreatedAt)
+	if len(task.Description) > 0 {
+		text += fmt.Sprintf("\nDescription: %v", task.Description)
 	}
 	if task.ErrorMsg != "" {
 		text += fmt.Sprintf("\nError: %s", task.ErrorMsg)
@@ -424,4 +437,55 @@ func str(v interface{}, def string) string {
 		return def
 	}
 	return strings.TrimSpace(s)
+}
+
+// detectGitRepo returns the absolute path of the current git repository root,
+// or an empty string if not inside a git repo.
+func detectGitRepo() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	// Walk up from current directory to find .git
+	for dir := cwd; dir != ""; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			abs, err := filepath.Abs(dir)
+			if err != nil {
+				return dir
+			}
+			return abs
+		}
+		// Stop at filesystem root
+		if dir == filepath.Dir(dir) {
+			break
+		}
+	}
+	return ""
+}
+
+// getOrCreateProjectByRepo calls GET /projects/by-repo?repo_path=... to find or create
+// the project for the given repository path.
+func (c *Client) getOrCreateProjectByRepo(repoPath string) (string, error) {
+	url := c.baseURL + "/api/projects/by-repo?repo_path=" + repoPath
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to look up project: %w", err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, string(data))
+	}
+	var proj struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &proj); err != nil {
+		return "", fmt.Errorf("invalid response: %w", err)
+	}
+	return proj.ID, nil
 }

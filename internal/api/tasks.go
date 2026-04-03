@@ -24,20 +24,25 @@ func NewTaskHandler(database *db.DB, sse *SSEHandler, disp *notifications.Dispat
 type CreateTaskRequest struct {
 	ProjectID   string `json:"project_id"`
 	ProjectName string `json:"project_name"`
+	RepoPath    string `json:"repo_path"`
 	Title       string `json:"title"`
-	Description string `json:"description"`
+	Description any    `json:"description"`
+	Locale      string `json:"locale"`
 	Priority    string `json:"priority"`
 	Assignee    string `json:"assignee"`
 	Source      string `json:"source"`
+	TaskMode    string `json:"task_mode"`
 }
 
 type UpdateTaskRequest struct {
 	ProjectID   string `json:"project_id"`
 	Title       string `json:"title"`
-	Description string `json:"description"`
+	Description any    `json:"description"`
+	Locale      string `json:"locale"`
 	Priority    string `json:"priority"`
 	Assignee    string `json:"assignee"`
 	Source      string `json:"source"`
+	TaskMode    string `json:"task_mode"`
 }
 
 type StatusUpdateRequest struct {
@@ -96,6 +101,15 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		projectID = p.ID
 	}
+	if projectID == "" && req.RepoPath != "" {
+		// Auto-associate project by git repo path
+		p, err := h.db.GetOrCreateByRepoPath(req.RepoPath)
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		projectID = p.ID
+	}
 	if projectID == "" {
 		// Use or create "default" project
 		p, err := h.db.GetOrCreateProject("default")
@@ -111,10 +125,20 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		priority = models.Priority(req.Priority)
 	}
 
+	locale := req.Locale
+	if locale == "" {
+		locale = "en"
+	}
+
+	desc := map[string]string{locale: ""}
+	if req.Description != nil {
+		desc = models.MergeDescription(nil, req.Description)
+	}
+
 	t := &models.Task{
 		ProjectID:   projectID,
 		Title:       req.Title,
-		Description: req.Description,
+		Description: desc,
 		Status:      models.TaskStatusPending,
 		Priority:    priority,
 		Assignee:    req.Assignee,
@@ -123,6 +147,9 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if t.Source == "" {
 		t.Source = "manual"
+	}
+	if models.ValidTaskMode(req.TaskMode) {
+		t.TaskMode = models.TaskMode(req.TaskMode)
 	}
 
 	if err := h.db.CreateTask(t); err != nil {
@@ -154,8 +181,11 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Title != "" {
 		t.Title = req.Title
 	}
-	if req.Description != "" {
-		t.Description = req.Description
+	if req.Description != nil {
+		if t.Description == nil {
+			t.Description = make(map[string]string)
+		}
+		t.Description = models.MergeDescription(t.Description, req.Description)
 	}
 	if models.ValidPriority(req.Priority) {
 		t.Priority = models.Priority(req.Priority)
@@ -168,6 +198,9 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Source != "" {
 		t.Source = req.Source
+	}
+	if models.ValidTaskMode(req.TaskMode) {
+		t.TaskMode = models.TaskMode(req.TaskMode)
 	}
 
 	if err := h.db.UpdateTask(t); err != nil {
@@ -215,10 +248,12 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		if !result.CanStart {
 			resp := map[string]interface{}{
-				"error":       "task is blocked",
-				"can_start":    false,
-				"blockers":     result.Blockers,
-				"child_titles": result.ChildTitles,
+				"error":                  "task is blocked",
+				"can_start":              false,
+				"blockers":               result.Blockers,
+				"child_titles":           result.ChildTitles,
+				"blocked_by_sequential":  result.BlockedBySequential,
+				"sequential_blocker":     result.SequentialBlocker,
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -259,8 +294,9 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // propagateToParent updates the parent task's status based on child statuses.
-// If any child becomes in_progress, parent auto-starts if pending.
-// If all children reach terminal state, parent auto-completes.
+// - If any child becomes in_progress, parent auto-starts if pending.
+// - If parent is sequential and any child reaches failed/cancelled, propagate that status.
+// - If all children reach terminal state, parent auto-completes.
 func (h *TaskHandler) propagateToParent(child *models.Task) {
 	parentID, err := h.db.GetParentID(child.ID)
 	if err != nil || parentID == "" {
@@ -269,6 +305,25 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 
 	parent, err := h.db.GetTask(parentID)
 	if err != nil || parent == nil {
+		return
+	}
+
+	// If parent is already in a terminal state, skip propagation
+	if parent.IsTerminal() {
+		return
+	}
+
+	// If parent is sequential and child reached a terminal state, propagate it
+	if parent.TaskMode == models.TaskModeSequential && child.IsTerminal() {
+		newStatus := child.Status
+		if err := h.db.UpdateTaskStatus(parentID, newStatus, ""); err != nil {
+			return
+		}
+		BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
+			"parent":       parent,
+			"child_id":     child.ID,
+			"child_status": child.Status,
+		})
 		return
 	}
 
@@ -283,16 +338,14 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 		return // No change needed
 	}
 
-	// Only auto-propagate if parent is not already in a terminal state
-	// (allow parent to be manually advanced, or let manual changes override)
 	if err := h.db.UpdateTaskStatus(parentID, newStatus, ""); err != nil {
 		return
 	}
 
 	// Broadcast parent status change
 	BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
-		"parent":     parent,
-		"child_id":   child.ID,
+		"parent":       parent,
+		"child_id":     child.ID,
 		"child_status": child.Status,
 	})
 }

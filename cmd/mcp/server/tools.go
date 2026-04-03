@@ -37,7 +37,7 @@ func GetToolDefinitions() []Tool {
 		// Task tools
 		{
 			Name:        "task_create",
-			Description: "Create a new task in Tasks Watcher. Call this when starting a new feature, bug fix, or any work item.",
+			Description: "Create a new task in Tasks Watcher. Call this when starting a new feature, bug fix, or any work item. Tasks can have a task_mode of 'sequential' (children must complete in order) or 'parallel' (children run independently). Parent tasks auto-complete when all children complete.",
 			InputSchema: ToolInputSchema{
 				Type:       "object",
 				Properties: taskCreateProps(),
@@ -136,6 +136,7 @@ func taskCreateProps() map[string]SchemaProp {
 		"project_name": {Type: "string", Description: "Project name (will auto-create if not exists)"},
 		"priority":    {Type: "string", Description: "Priority: low, medium, high, urgent", Enum: []string{"low", "medium", "high", "urgent"}, Default: "medium"},
 		"assignee":    {Type: "string", Description: "Assignee name (e.g., claude-code, cursor, human)"},
+		"task_mode":   {Type: "string", Description: "Task ordering mode: sequential (children must complete in order) or parallel (children run independently)", Enum: []string{"sequential", "parallel"}},
 	}
 }
 

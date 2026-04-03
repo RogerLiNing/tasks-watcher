@@ -68,6 +68,15 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set repo_path if provided and project is new or has no repo_path
+	if req.RepoPath != "" && p.RepoPath == "" {
+		p.RepoPath = req.RepoPath
+		if err := h.db.UpdateProject(p); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+	}
+
 	BroadcastTaskEvent(h.sse, models.EventProjectCreated, p)
 	json.NewEncoder(w).Encode(p)
 }
@@ -86,9 +95,15 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.Name = req.Name
-	p.Description = req.Description
-	p.RepoPath = req.RepoPath
+	if req.Name != "" {
+		p.Name = req.Name
+	}
+	if req.Description != "" {
+		p.Description = req.Description
+	}
+	if req.RepoPath != "" {
+		p.RepoPath = req.RepoPath
+	}
 
 	if err := h.db.UpdateProject(p); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
@@ -109,9 +124,26 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetOrCreateByRepo looks up or creates a project by repo_path.
+// GET /projects/by-repo?repo_path=/path/to/repo
+func (h *ProjectHandler) GetOrCreateByRepo(w http.ResponseWriter, r *http.Request) {
+	repoPath := r.URL.Query().Get("repo_path")
+	if repoPath == "" {
+		http.Error(w, `{"error":"repo_path query parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+	p, err := h.db.GetOrCreateByRepoPath(repoPath)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(p)
+}
+
 func (h *ProjectHandler) Register(router *mux.Router) {
 	router.HandleFunc("/projects", h.List).Methods("GET")
 	router.HandleFunc("/projects", h.Create).Methods("POST")
+	router.HandleFunc("/projects/by-repo", h.GetOrCreateByRepo).Methods("GET")
 	router.HandleFunc("/projects/{id}", h.Get).Methods("GET")
 	router.HandleFunc("/projects/{id}", h.Update).Methods("PUT")
 	router.HandleFunc("/projects/{id}", h.Delete).Methods("DELETE")

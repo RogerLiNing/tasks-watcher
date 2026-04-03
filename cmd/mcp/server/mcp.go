@@ -5,12 +5,72 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"sync"
 
 	"github.com/rogerrlee/tasks-watcher/cmd/mcp/client"
 	"github.com/rogerrlee/tasks-watcher/pkg/mcp"
 )
 
+// MultiServer supports multiple concurrent MCP sessions via Unix socket.
+type MultiServer struct {
+	api     *client.Client
+	listener net.Listener
+	wg      sync.WaitGroup
+}
+
+func NewMultiServer(api *client.Client) *MultiServer {
+	return &MultiServer{api: api}
+}
+
+// Listen starts a Unix socket server. Each incoming connection is handled concurrently.
+func (s *MultiServer) Listen(socketPath string) error {
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove existing socket: %w", err)
+	}
+
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("listen on unix socket %s: %w", socketPath, err)
+	}
+	if err := os.Chmod(socketPath, 0777); err != nil {
+		return fmt.Errorf("chmod socket: %w", err)
+	}
+	s.listener = ln
+
+	go s.acceptLoop()
+	return nil
+}
+
+func (s *MultiServer) acceptLoop() {
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return
+		}
+		s.wg.Add(1)
+		go s.handleConn(conn)
+	}
+}
+
+func (s *MultiServer) handleConn(c net.Conn) {
+	defer s.wg.Done()
+	defer c.Close()
+	srv := &Server{api: s.api}
+	srv.ServeConn(c)
+}
+
+// Close shuts down the socket listener.
+func (s *MultiServer) Close() error {
+	if s.listener != nil {
+		s.listener.Close()
+	}
+	s.wg.Wait()
+	return nil
+}
+
+// Server is the single-session MCP server.
 type Server struct {
 	api *client.Client
 }
@@ -19,8 +79,11 @@ func New(api *client.Client) *Server {
 	return &Server{api: api}
 }
 
+// Serve handles a single stdio session.
 func (s *Server) Serve(stdin io.Reader, stdout io.Writer) error {
 	dec := json.NewDecoder(stdin)
+	enc := json.NewEncoder(stdout)
+
 	for {
 		var req mcp.JSONRPCRequest
 		if err := dec.Decode(&req); err != nil {
@@ -31,12 +94,32 @@ func (s *Server) Serve(stdin io.Reader, stdout io.Writer) error {
 		}
 
 		resp := s.handle(req)
-
-		if err := json.NewEncoder(stdout).Encode(resp); err != nil {
+		if err := enc.Encode(resp); err != nil {
 			return fmt.Errorf("encode error: %w", err)
 		}
-		if f, ok := stdout.(*os.File); ok {
+		if f, ok := stdout.(interface{ Sync() error }); ok {
 			f.Sync()
+		}
+	}
+}
+
+// ServeConn handles a single socket connection.
+func (s *Server) ServeConn(c io.ReadWriteCloser) error {
+	dec := json.NewDecoder(c)
+	enc := json.NewEncoder(c)
+
+	for {
+		var req mcp.JSONRPCRequest
+		if err := dec.Decode(&req); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return fmt.Errorf("decode error: %w", err)
+		}
+
+		resp := s.handle(req)
+		if err := enc.Encode(resp); err != nil {
+			return fmt.Errorf("encode error: %w", err)
 		}
 	}
 }

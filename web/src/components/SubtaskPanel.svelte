@@ -6,6 +6,7 @@
 
   const dispatch = createEventDispatcher();
 
+  // subtaskWithPos shape: { id, title, status, position, ...Task }
   let subtasks = [];
   let parent = null;
   let loading = true;
@@ -14,6 +15,9 @@
   let newTitle = '';
   let newDesc = '';
   let creating = false;
+
+  // Local parent mode (synced from parent task prop)
+  $: parentMode = task.task_mode || '';
 
   async function loadSubtasks() {
     loading = true;
@@ -64,6 +68,21 @@
     }
   }
 
+  async function moveSubtask(childId, direction) {
+    const idx = subtasks.findIndex(s => s.id === childId);
+    if (idx < 0) return;
+    const newPos = direction === 'up' ? idx - 1 : idx + 1;
+    if (newPos < 0 || newPos >= subtasks.length) return;
+    try {
+      await api.reorderSubtask(task.id, childId, newPos);
+      await loadSubtasks();
+      dispatch('refresh');
+    } catch (e) {
+      try { error = JSON.parse(e.message).error || e.message; }
+      catch (_) { error = e.message; }
+    }
+  }
+
   function openTask(taskId) {
     dispatch('openTask', taskId);
   }
@@ -95,6 +114,12 @@
       </div>
     {/if}
 
+    {#if parentMode === 'sequential' || parentMode === 'parallel'}
+      <div class="mode-indicator" class:sequential={parentMode === 'sequential'} class:parallel={parentMode === 'parallel'}>
+        {parentMode === 'sequential' ? '🔗 Sequential order' : '⚡ Parallel — all run independently'}
+      </div>
+    {/if}
+
     {#if showCreateForm}
       <div class="create-form">
         <input
@@ -122,8 +147,23 @@
       {#if subtasks.length === 0 && !showCreateForm}
         <p class="empty-hint">No subtasks yet</p>
       {:else}
-        {#each subtasks as s (s.id)}
+        {#each subtasks as s, i (s.id)}
           <div class="subtask-item">
+            {#if parentMode === 'sequential'}
+              <span class="pos-num">{i + 1}</span>
+              <button
+                class="reorder-btn"
+                disabled={i === 0}
+                on:click={() => moveSubtask(s.id, 'up')}
+                title="Move up"
+              >↑</button>
+              <button
+                class="reorder-btn"
+                disabled={i === subtasks.length - 1}
+                on:click={() => moveSubtask(s.id, 'down')}
+                title="Move down"
+              >↓</button>
+            {/if}
             <span class="subtask-status" data-status={s.status}></span>
             <span class="subtask-title" on:click={() => openTask(s.id)}>{s.title}</span>
             <button class="remove-btn" on:click={() => removeSubtask(s.id)} title="Remove from subtasks">×</button>
@@ -206,6 +246,15 @@
   }
   .parent-title:hover { text-decoration: underline; }
 
+  .mode-indicator {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+  }
+  .mode-indicator.sequential { background: #e8f0fe; color: #0071e3; }
+  .mode-indicator.parallel { background: #e8fef0; color: #34c759; }
+
   .create-form {
     background: #f5f5f7;
     border-radius: 8px;
@@ -259,10 +308,36 @@
   .subtask-item {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0;
+    gap: 0.3rem;
+    padding: 0.2rem 0;
     font-size: 0.8rem;
   }
+
+  .pos-num {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #0071e3;
+    background: #e8f0fe;
+    border-radius: 4px;
+    padding: 0 4px;
+    min-width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .reorder-btn {
+    background: none;
+    border: 1px solid #d2d2d7;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.65rem;
+    color: #86868b;
+    padding: 0 3px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .reorder-btn:hover:not(:disabled) { background: #f5f5f7; color: #0071e3; }
+  .reorder-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
   .subtask-status {
     width: 7px;

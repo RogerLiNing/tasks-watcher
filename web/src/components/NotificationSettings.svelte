@@ -110,15 +110,13 @@
   loadConfigs();
 </script>
 
-<div class="settings-overlay" on:click={onClose} role="button" tabindex="-1" on:keydown={() => {}}>
-  <div class="settings-panel" on:click|stopPropagation role="dialog">
+<div class="ns-content">
     <div class="panel-header">
       <h2>Notification Settings</h2>
       <div class="header-actions">
         {#if saved}
           <span class="saved-badge">Saved</span>
         {/if}
-        <button class="close-btn" on:click={onClose}>×</button>
       </div>
     </div>
 
@@ -192,43 +190,17 @@
 
       </div>
     {/if}
-  </div>
 </div>
 
 <style>
-  .settings-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 300;
-  }
-
-  .settings-panel {
-    background: white;
-    border-radius: 16px;
-    width: 560px;
-    max-width: 95vw;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-  }
-
   .panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #e5e5ea;
-    position: sticky;
-    top: 0;
-    background: white;
-    border-radius: 16px 16px 0 0;
+    padding: 1.25rem 1.5rem 1rem;
   }
 
-  .panel-header h2 { font-size: 1.1rem; font-weight: 600; }
+  .panel-header h2 { font-size: 1rem; font-weight: 600; margin: 0; }
 
   .header-actions { display: flex; align-items: center; gap: 0.75rem; }
 
@@ -241,22 +213,12 @@
     font-weight: 600;
   }
 
-  .close-btn {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #86868b;
-    padding: 0 0.5rem;
-    line-height: 1;
-  }
-
-  .panel-body { padding: 1.5rem; }
+  .panel-body { padding: 0 1.5rem 1.5rem; }
 
   .loading {
     text-align: center;
     color: #86868b;
-    padding: 3rem;
+    padding: 3rem 1.5rem;
   }
 
   hr {

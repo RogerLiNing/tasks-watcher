@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -113,7 +114,7 @@ func (db *DB) GetDependentIDs(taskID string) ([]string, error) {
 func (db *DB) GetDependencyTasks(taskID string) ([]models.Task, error) {
 	rows, err := db.conn.Query(`
 		SELECT t.id, t.project_id, t.title, t.description, t.status, t.priority,
-		       t.assignee, t.source, t.error_message, t.heartbeat_at,
+		       t.assignee, t.source, t.task_mode, t.error_message, t.heartbeat_at,
 		       t.created_at, t.updated_at, t.completed_at
 		FROM tasks t
 		JOIN task_dependencies d ON t.id = d.blocker_id
@@ -132,7 +133,7 @@ func (db *DB) GetDependencyTasks(taskID string) ([]models.Task, error) {
 func (db *DB) GetDependentTasks(taskID string) ([]models.Task, error) {
 	rows, err := db.conn.Query(`
 		SELECT t.id, t.project_id, t.title, t.description, t.status, t.priority,
-		       t.assignee, t.source, t.error_message, t.heartbeat_at,
+		       t.assignee, t.source, t.task_mode, t.error_message, t.heartbeat_at,
 		       t.created_at, t.updated_at, t.completed_at
 		FROM tasks t
 		JOIN task_dependencies d ON t.id = d.task_id
@@ -213,12 +214,163 @@ func (db *DB) CanStartTask(taskID string) (*models.CanStartResult, error) {
 		}
 	}
 
+	// Check sequential sibling ordering (only for subtasks)
+	seqBlocker, err := db.GetPrevSequentialSiblingTitle(taskID)
+	if err != nil {
+		return nil, err
+	}
+	if seqBlocker != "" {
+		result.CanStart = false
+		result.BlockedBySequential = true
+		result.SequentialBlocker = seqBlocker
+	}
+
 	return result, nil
+}
+
+// GetPrevSequentialSiblingTitle returns the title of the immediate previous sibling
+// if the parent is in sequential mode and the previous sibling has not reached a
+// terminal state. Returns "" if no sibling is blocking.
+func (db *DB) GetPrevSequentialSiblingTitle(childID string) (string, error) {
+	parentID, err := db.GetParentID(childID)
+	if err != nil || parentID == "" {
+		return "", nil // not a subtask
+	}
+
+	// Check parent's task_mode
+	parent, err := db.GetTask(parentID)
+	if err != nil || parent == nil {
+		return "", nil
+	}
+	if parent.TaskMode != models.TaskModeSequential {
+		return "", nil // not sequential mode — no ordering constraint
+	}
+
+	// Get position of current child
+	pos, err := db.GetSubtaskPosition(parentID, childID)
+	if err != nil {
+		return "", err
+	}
+	if pos <= 0 {
+		return "", nil // first child — no previous sibling
+	}
+
+	// Find the previous sibling's ID
+	prevID, err := db.getSubtaskIDAtPosition(parentID, pos-1)
+	if err != nil || prevID == "" {
+		return "", nil
+	}
+
+	// Check if previous sibling is terminal
+	prevTask, err := db.GetTask(prevID)
+	if err != nil || prevTask == nil {
+		return "", nil
+	}
+	if prevTask.IsTerminal() {
+		return "", nil // previous sibling done — this child can start
+	}
+	return prevTask.Title, nil
+}
+
+// GetSubtaskPosition returns the position of childID within parentID's subtask list.
+func (db *DB) GetSubtaskPosition(parentID, childID string) (int, error) {
+	var pos int
+	err := db.conn.QueryRow(
+		`SELECT position FROM task_subtasks WHERE parent_id = ? AND child_id = ?`,
+		parentID, childID,
+	).Scan(&pos)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return pos, err
+}
+
+// getSubtaskIDAtPosition returns the child_id at a given position within parent.
+func (db *DB) getSubtaskIDAtPosition(parentID string, pos int) (string, error) {
+	var childID string
+	err := db.conn.QueryRow(
+		`SELECT child_id FROM task_subtasks WHERE parent_id = ? AND position = ?`,
+		parentID, pos,
+	).Scan(&childID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return childID, err
+}
+
+// GetSubtaskPositions returns a map of child_id → position for all subtasks of parent.
+func (db *DB) GetSubtaskPositions(parentID string) (map[string]int, error) {
+	rows, err := db.conn.Query(
+		`SELECT child_id, position FROM task_subtasks WHERE parent_id = ? ORDER BY position`, parentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]int)
+	for rows.Next() {
+		var cid string
+		var pos int
+		rows.Scan(&cid, &pos)
+		m[cid] = pos
+	}
+	return m, rows.Err()
+}
+func (db *DB) SetSubtaskPosition(parentID, childID string, newPos int) error {
+	if newPos < 0 {
+		newPos = 0
+	}
+
+	// Get current position
+	currentPos, err := db.GetSubtaskPosition(parentID, childID)
+	if err != nil {
+		return err
+	}
+	if currentPos == newPos {
+		return nil
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if newPos > currentPos {
+		// Shift down: decrement positions of subtasks between current and newPos
+		_, err = tx.Exec(
+			`UPDATE task_subtasks SET position = position - 1
+			 WHERE parent_id = ? AND position > ? AND position <= ?`,
+			parentID, currentPos, newPos,
+		)
+	} else {
+		// Shift up: increment positions of subtasks between newPos and current
+		_, err = tx.Exec(
+			`UPDATE task_subtasks SET position = position + 1
+			 WHERE parent_id = ? AND position >= ? AND position < ?`,
+			parentID, newPos, currentPos,
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Set the new position
+	_, err = tx.Exec(
+		`UPDATE task_subtasks SET position = ? WHERE parent_id = ? AND child_id = ?`,
+		newPos, parentID, childID,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // --- Subtasks ---
 
 // AddSubtask assigns childID as a subtask of parentID.
+// Position is auto-assigned to max(existing positions) + 1.
 func (db *DB) AddSubtask(parentID, childID string) (*models.Task, error) {
 	if parentID == childID {
 		return nil, fmt.Errorf("a task cannot be a subtask of itself")
@@ -249,9 +401,19 @@ func (db *DB) AddSubtask(parentID, childID string) (*models.Task, error) {
 		return nil, fmt.Errorf("task %q is already a subtask of %q", child.Title, existingParent)
 	}
 
+	// Auto-assign position = max(existing) + 1
+	var position int
+	err = db.conn.QueryRow(
+		`SELECT COALESCE(MAX(position), -1) + 1 FROM task_subtasks WHERE parent_id = ?`,
+		parentID,
+	).Scan(&position)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute position: %w", err)
+	}
+
 	_, err = db.conn.Exec(
-		`INSERT OR IGNORE INTO task_subtasks (id, parent_id, child_id, created_at) VALUES (?, ?, ?, ?)`,
-		uuid.New().String(), parentID, childID, models.Now(),
+		`INSERT OR IGNORE INTO task_subtasks (id, parent_id, child_id, position, created_at) VALUES (?, ?, ?, ?, ?)`,
+		uuid.New().String(), parentID, childID, position, models.Now(),
 	)
 	if err != nil {
 		return nil, err
@@ -290,15 +452,16 @@ func (db *DB) GetSubtaskIDs(parentID string) ([]string, error) {
 }
 
 // GetSubtaskTasks returns full Task objects for all subtasks of the given parent.
+// Ordered by position for deterministic sequential ordering.
 func (db *DB) GetSubtaskTasks(parentID string) ([]models.Task, error) {
 	rows, err := db.conn.Query(`
 		SELECT t.id, t.project_id, t.title, t.description, t.status, t.priority,
-		       t.assignee, t.source, t.error_message, t.heartbeat_at,
+		       t.assignee, t.source, t.task_mode, t.error_message, t.heartbeat_at,
 		       t.created_at, t.updated_at, t.completed_at
 		FROM tasks t
 		JOIN task_subtasks s ON t.id = s.child_id
 		WHERE s.parent_id = ?
-		ORDER BY t.created_at
+		ORDER BY s.position
 	`, parentID)
 	if err != nil {
 		return nil, err
@@ -397,12 +560,23 @@ func scanTasks(rows *sql.Rows) ([]models.Task, error) {
 		var t models.Task
 		var completedAt, heartbeatAt sql.NullInt64
 		var errorMsg sql.NullString
+		var descStr sql.NullString
+		var taskMode sql.NullString
 		if err := rows.Scan(
-			&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Status, &t.Priority,
-			&t.Assignee, &t.Source, &errorMsg, &heartbeatAt,
+			&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority,
+			&t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt,
 			&t.CreatedAt, &t.UpdatedAt, &completedAt,
 		); err != nil {
 			return nil, err
+		}
+		if descStr.Valid && descStr.String != "" {
+			var parsed map[string]string
+			if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
+				t.Description = parsed
+			}
+		}
+		if taskMode.Valid && taskMode.String != "" {
+			t.TaskMode = models.TaskMode(taskMode.String)
 		}
 		if errorMsg.Valid {
 			t.ErrorMessage = errorMsg.String

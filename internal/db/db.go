@@ -42,6 +42,11 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
+// Conn exposes the underlying sql.DB for advanced queries.
+func (db *DB) Conn() *sql.DB {
+	return db.conn
+}
+
 // migrate runs all pending migrations
 func (db *DB) migrate() error {
 	// Create migrations table if not exists
@@ -172,6 +177,68 @@ func (db *DB) GetOrCreateProject(name string) (*models.Project, error) {
 	return p, nil
 }
 
+func (db *DB) GetProjectByRepoPath(repoPath string) (*models.Project, error) {
+	if repoPath == "" {
+		return nil, nil
+	}
+	p := &models.Project{}
+	err := db.conn.QueryRow(
+		`SELECT id, name, description, repo_path, created_at, updated_at FROM projects WHERE repo_path = ?`, repoPath,
+	).Scan(&p.ID, &p.Name, &p.Description, &p.RepoPath, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return p, err
+}
+
+// GetOrCreateByRepoPath returns an existing project with this repo_path, or creates a new one.
+// The project name defaults to the repo directory name.
+func (db *DB) GetOrCreateByRepoPath(repoPath string) (*models.Project, error) {
+	if repoPath == "" {
+		return nil, nil
+	}
+	p, err := db.GetProjectByRepoPath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	if p != nil {
+		return p, nil
+	}
+	// Extract name from repo path
+	name := filepath.Base(repoPath)
+	if name == "" || name == "." || name == "/" {
+		name = "default"
+	}
+	// Check if a project with this name already exists
+	existing, err := db.GetProjectByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		// Project exists by name but has no repo_path — update it
+		if existing.RepoPath == "" {
+			existing.RepoPath = repoPath
+			if err := db.UpdateProject(existing); err != nil {
+				return nil, err
+			}
+		}
+		return existing, nil
+	}
+	// Create brand new project
+	p = &models.Project{
+		ID:          uuid.New().String(),
+		Name:        name,
+		Description: "",
+		RepoPath:    repoPath,
+		CreatedAt:   models.Now(),
+		UpdatedAt:   models.Now(),
+	}
+	if err := db.CreateProject(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 // --- Tasks ---
 
 func (db *DB) CreateTask(t *models.Task) error {
@@ -181,9 +248,9 @@ func (db *DB) CreateTask(t *models.Task) error {
 	t.CreatedAt = models.Now()
 	t.UpdatedAt = models.Now()
 	_, err := db.conn.Exec(
-		`INSERT INTO tasks (id, project_id, title, description, status, priority, assignee, source, error_message, heartbeat_at, created_at, updated_at, completed_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.ProjectID, t.Title, t.Description, t.Status, t.Priority, t.Assignee, t.Source, t.ErrorMessage, t.HeartbeatAt, t.CreatedAt, t.UpdatedAt, t.CompletedAt,
+		`INSERT INTO tasks (id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, t.Assignee, t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.CreatedAt, t.UpdatedAt, t.CompletedAt,
 	)
 	return err
 }
@@ -193,12 +260,26 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 	var completedAt sql.NullInt64
 	var heartbeatAt sql.NullInt64
 	var errorMsg sql.NullString
+	var descStr sql.NullString
+	var taskMode sql.NullString
 	err := db.conn.QueryRow(
-		`SELECT id, project_id, title, description, status, priority, assignee, source, error_message, heartbeat_at, created_at, updated_at, completed_at
+		`SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at
 		 FROM tasks WHERE id = ?`, id,
-	).Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Status, &t.Priority, &t.Assignee, &t.Source, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt)
+	).Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if descStr.Valid && descStr.String != "" {
+		var parsed map[string]string
+		if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
+			t.Description = parsed
+		}
+	}
+	if taskMode.Valid && taskMode.String != "" {
+		t.TaskMode = models.TaskMode(taskMode.String)
 	}
 	if errorMsg.Valid {
 		t.ErrorMessage = errorMsg.String
@@ -209,11 +290,11 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 	if completedAt.Valid {
 		t.CompletedAt = completedAt.Int64
 	}
-	return t, err
+	return t, nil
 }
 
 func (db *DB) ListTasks(projectID, status, assignee string) ([]models.Task, error) {
-	query := `SELECT id, project_id, title, description, status, priority, assignee, source, error_message, heartbeat_at, created_at, updated_at, completed_at FROM tasks WHERE 1=1`
+	query := `SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at FROM tasks WHERE 1=1`
 	args := []interface{}{}
 	if projectID != "" {
 		query += " AND project_id = ?"
@@ -240,8 +321,19 @@ func (db *DB) ListTasks(projectID, status, assignee string) ([]models.Task, erro
 		var t models.Task
 		var completedAt, heartbeatAt sql.NullInt64
 		var errorMsg sql.NullString
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Status, &t.Priority, &t.Assignee, &t.Source, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt); err != nil {
+		var descStr sql.NullString
+		var taskMode sql.NullString
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt); err != nil {
 			return nil, err
+		}
+		if descStr.Valid && descStr.String != "" {
+			var parsed map[string]string
+			if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
+				t.Description = parsed
+			}
+		}
+		if taskMode.Valid && taskMode.String != "" {
+			t.TaskMode = models.TaskMode(taskMode.String)
 		}
 		if errorMsg.Valid {
 			t.ErrorMessage = errorMsg.String
@@ -260,8 +352,8 @@ func (db *DB) ListTasks(projectID, status, assignee string) ([]models.Task, erro
 func (db *DB) UpdateTask(t *models.Task) error {
 	t.UpdatedAt = models.Now()
 	_, err := db.conn.Exec(
-		`UPDATE tasks SET project_id = ?, title = ?, description = ?, status = ?, priority = ?, assignee = ?, source = ?, error_message = ?, heartbeat_at = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
-		t.ProjectID, t.Title, t.Description, t.Status, t.Priority, t.Assignee, t.Source, t.ErrorMessage, t.HeartbeatAt, t.UpdatedAt, t.CompletedAt, t.ID,
+		`UPDATE tasks SET project_id = ?, title = ?, description = ?, status = ?, priority = ?, assignee = ?, source = ?, task_mode = ?, error_message = ?, heartbeat_at = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
+		t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, t.Assignee, t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.UpdatedAt, t.CompletedAt, t.ID,
 	)
 	return err
 }
@@ -490,4 +582,50 @@ func (db *DB) ExportAll() (map[string]interface{}, error) {
 		"notifications": notifications,
 		"exported_at":    models.Now(),
 	}, nil
+}
+
+// --- Columns ---
+
+func (db *DB) ListColumns() ([]models.TaskColumn, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, key, label, color, position FROM task_columns ORDER BY position`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []models.TaskColumn
+	for rows.Next() {
+		var c models.TaskColumn
+		if err := rows.Scan(&c.ID, &c.Key, &c.Label, &c.Color, &c.Position); err != nil {
+			return nil, err
+		}
+		cols = append(cols, c)
+	}
+	return cols, rows.Err()
+}
+
+func (db *DB) CreateColumn(c *models.TaskColumn) error {
+	if c.ID == "" {
+		c.ID = uuid.New().String()
+	}
+	_, err := db.conn.Exec(
+		`INSERT INTO task_columns (id, key, label, color, position, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Key, c.Label, c.Color, c.Position, models.Now(),
+	)
+	return err
+}
+
+func (db *DB) UpdateColumn(c *models.TaskColumn) error {
+	_, err := db.conn.Exec(
+		`UPDATE task_columns SET label = ?, color = ?, position = ? WHERE id = ?`,
+		c.Label, c.Color, c.Position, c.ID,
+	)
+	return err
+}
+
+func (db *DB) DeleteColumn(id string) error {
+	_, err := db.conn.Exec(`DELETE FROM task_columns WHERE id = ?`, id)
+	return err
 }

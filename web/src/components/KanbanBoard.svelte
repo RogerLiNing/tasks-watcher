@@ -1,19 +1,22 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import TaskCard from './TaskCard.svelte';
+  import { columns } from '../lib/stores.js';
   import { t } from '../lib/i18n/index.js';
 
   export let tasksByStatus = {};
 
   const dispatch = createEventDispatcher();
 
-  const columns = [
+  const defaultColumns = [
     { key: 'pending', color: '#86868b' },
     { key: 'in_progress', color: '#0071e3' },
     { key: 'completed', color: '#34c759' },
     { key: 'failed', color: '#ff3b30' },
     { key: 'cancelled', color: '#ff9500' },
   ];
+
+  $: boardColumns = $columns.length > 0 ? $columns : defaultColumns;
 
   function handleDragStart(e, task) {
     e.dataTransfer.setData('taskId', task.id);
@@ -39,7 +42,7 @@
 </script>
 
 <div class="kanban-board">
-  {#each columns as col (col.key)}
+  {#each boardColumns as col (col.key || col.id)}
     <div
       class="column"
       on:drop={(e) => handleDrop(e, col.key)}

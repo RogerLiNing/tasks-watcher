@@ -1,5 +1,5 @@
 <script>
-  import { t } from '../lib/i18n/index.js';
+  import { t, locale } from '../lib/i18n/index.js';
 
   const priorityColors = {
     low: '#34c759',
@@ -20,7 +20,25 @@
     'manual': '#86868b',
   };
 
+  const modeIcons = {
+    sequential: '🔗',
+    parallel: '⚡',
+  };
+
+  const modeColors = {
+    sequential: '#0071e3',
+    parallel: '#34c759',
+  };
+
   export let task;
+
+  function getLocalizedDesc(desc, loc) {
+    if (!desc) return '';
+    if (typeof desc === 'object') {
+      return desc[loc] || desc['en'] || desc['zh'] || desc['_raw'] || Object.values(desc)[0] || '';
+    }
+    return desc;
+  }
 
   function formatTime(ts) {
     if (!ts) return '';
@@ -45,10 +63,15 @@
         {sourceIcons[task.source] || '📌'} {task.source}
       </span>
     {/if}
+    {#if task.task_mode === 'sequential' || task.task_mode === 'parallel'}
+      <span class="mode-badge" style="background:{modeColors[task.task_mode] || '#86868b'}" title={task.task_mode === 'sequential' ? 'Sequential: children must complete in order' : 'Parallel: children run independently'}>
+        {modeIcons[task.task_mode] || '📌'} {task.task_mode}
+      </span>
+    {/if}
   </div>
   <p class="task-title">{task.title}</p>
   {#if task.description}
-    <p class="task-desc">{task.description}</p>
+    <p class="task-desc">{getLocalizedDesc(task.description, $locale)}</p>
   {/if}
   <div class="card-footer">
     <span class="time">{formatTime(task.updated_at)}</span>
@@ -105,6 +128,15 @@
 
   .source-badge {
     font-size: 0.65rem;
+    color: white;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mode-badge {
+    font-size: 0.6rem;
     color: white;
     padding: 1px 5px;
     border-radius: 4px;

@@ -1,21 +1,16 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { api } from '../lib/api.js';
   import { t } from '../lib/i18n/index.js';
 
   export let projects = [];
 
   const dispatch = createEventDispatcher();
   let title = '';
-  let projectName = '';
   let priority = 'medium';
 
   async function createTask() {
     if (!title.trim()) return;
     const task = { title: title.trim(), priority };
-    if (projectName) {
-      task.project_name = projectName;
-    }
     dispatch('create', task);
     title = '';
   }
@@ -27,12 +22,6 @@
     placeholder={$t('quickCreate.placeholder')}
     on:keydown={(e) => e.key === 'Enter' && createTask()}
   />
-  <select bind:value={projectName}>
-    <option value="">{$t('quickCreate.projectSelect')}</option>
-    {#each projects as p (p.id)}
-      <option value={p.name}>{p.name}</option>
-    {/each}
-  </select>
   <select bind:value={priority}>
     <option value="low">{$t('quickCreate.low')}</option>
     <option value="medium">{$t('quickCreate.med')}</option>

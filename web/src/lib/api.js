@@ -50,9 +50,15 @@ export const api = {
     const params = new URLSearchParams(filters).toString();
     return request('GET', `/tasks${params ? '?' + params : ''}`);
   },
-  createTask: (data) => request('POST', '/tasks', data),
+  createTask: (data) => request('POST', '/tasks', {
+    ...data,
+    description: data.description ? JSON.parse(JSON.stringify(data.description)) : undefined,
+  }),
   getTask: (id) => request('GET', `/tasks/${id}`),
-  updateTask: (id, data) => request('PUT', `/tasks/${id}`, data),
+  updateTask: (id, data) => request('PUT', `/tasks/${id}`, {
+    ...data,
+    description: data.description ? JSON.parse(JSON.stringify(data.description)) : undefined,
+  }),
   updateTaskStatus: (id, status, reason) => request('PATCH', `/tasks/${id}/status`, { status, reason }),
   deleteTask: (id) => request('DELETE', `/tasks/${id}`),
   heartbeat: (id) => request('POST', `/tasks/${id}/heartbeat`),
@@ -68,6 +74,7 @@ export const api = {
   getSubtasks: (parentId) => request('GET', `/tasks/${parentId}/subtasks`),
   createSubtask: (parentId, data) => request('POST', `/tasks/${parentId}/subtasks`, data),
   removeSubtask: (parentId, childId) => request('DELETE', `/tasks/${parentId}/subtasks/${childId}`),
+  reorderSubtask: (parentId, childId, position) => request('PATCH', `/tasks/${parentId}/subtasks/${childId}/position`, { position }),
   getParent: (taskId) => request('GET', `/tasks/${taskId}/parent`),
 
   // Notifications
@@ -80,4 +87,10 @@ export const api = {
 
   // Export
   export: () => request('GET', '/export'),
+
+  // Columns
+  listColumns: () => request('GET', '/columns'),
+  createColumn: (data) => request('POST', '/columns', data),
+  updateColumn: (id, data) => request('PUT', `/columns/${id}`, data),
+  deleteColumn: (id) => request('DELETE', `/columns/${id}`),
 };

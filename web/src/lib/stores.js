@@ -8,6 +8,7 @@ export const selectedProjectId = writable('');
 export const selectedSource = writable(''); // filter by source: '', 'claude-code', 'cursor', 'manual'
 export const showNotifications = writable(false);
 export const sseConnected = writable(false);
+export const columns = writable([]);
 
 // Derived: tasks grouped by status
 export const tasksByStatus = derived(tasks, ($tasks) => {
