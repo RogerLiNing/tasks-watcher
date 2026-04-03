@@ -100,6 +100,9 @@ func (s *SSEHandler) Broadcast(event models.SSEEvent) {
 
 // BroadcastTaskEvent is a helper to broadcast a task event
 func BroadcastTaskEvent(sse *SSEHandler, eventType string, payload interface{}) {
+	if sse == nil {
+		return
+	}
 	sse.Broadcast(models.SSEEvent{
 		Type:    eventType,
 		Payload: payload,

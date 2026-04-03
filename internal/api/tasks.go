@@ -174,7 +174,9 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Notify
-	h.dispatcher.Notify(models.EventTaskCreated, t)
+	if h.dispatcher != nil {
+		h.dispatcher.Notify(models.EventTaskCreated, t)
+	}
 	BroadcastTaskEvent(h.sse, models.EventTaskCreated, t)
 
 	json.NewEncoder(w).Encode(t)
@@ -303,7 +305,9 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	// Determine event type
 	eventType := fmt.Sprintf("task.%s", to)
 
-	h.dispatcher.Notify(eventType, t)
+	if h.dispatcher != nil {
+		h.dispatcher.Notify(eventType, t)
+	}
 	BroadcastTaskEvent(h.sse, eventType, t)
 
 	json.NewEncoder(w).Encode(t)
