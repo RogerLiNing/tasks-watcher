@@ -28,8 +28,13 @@ async function request(method, path, body) {
     throw new Error('UNAUTHORIZED');
   }
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
+    // API returns JSON error bodies — parse them for a useful message
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const err = await res.json();
+      throw new Error(err.error || res.statusText);
+    }
+    throw new Error(await res.text());
   }
   if (res.status === 204) return null;
   return res.json();
@@ -93,4 +98,8 @@ export const api = {
   createColumn: (data) => request('POST', '/columns', data),
   updateColumn: (id, data) => request('PUT', `/columns/${id}`, data),
   deleteColumn: (id) => request('DELETE', `/columns/${id}`),
+
+  // Notification configs
+  listNotificationConfigs: () => request('GET', '/notifications/configs'),
+  upsertNotificationConfig: (data) => request('POST', '/notifications/configs', data),
 };

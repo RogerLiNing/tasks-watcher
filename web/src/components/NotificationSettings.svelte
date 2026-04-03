@@ -21,10 +21,7 @@
 
   async function loadConfigs() {
     try {
-      const data = await fetch('/api/notifications/configs', {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('tasks_watcher_api_key') }
-      }).then(r => r.json());
-
+      const data = await api.listNotificationConfigs();
       configs = (data.configs || []).reduce((acc, c) => {
         acc[c.type] = c;
         return acc;
@@ -53,14 +50,7 @@
   async function saveMacos() {
     saving = true;
     try {
-      await fetch('/api/notifications/configs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('tasks_watcher_api_key')
-        },
-        body: JSON.stringify({ type: 'macos', enabled: macosEnabled, config: {} })
-      });
+      await api.upsertNotificationConfig({ type: 'macos', enabled: macosEnabled, config: {} });
       showSaved();
     } catch (e) {
       console.error('Failed to save macOS config', e);
@@ -73,24 +63,17 @@
     saving = true;
     const toAddresses = toAddressesStr.split(',').map(s => s.trim()).filter(Boolean);
     try {
-      await fetch('/api/notifications/configs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('tasks_watcher_api_key')
-        },
-        body: JSON.stringify({
-          type: 'email',
-          enabled: emailEnabled,
-          config: {
-            smtp_host: smtpHost,
-            smtp_port: smtpPort,
-            smtp_username: smtpUsername,
-            smtp_password: smtpPassword,
-            from_address: fromAddress,
-            to_addresses: toAddresses,
-          }
-        })
+      await api.upsertNotificationConfig({
+        type: 'email',
+        enabled: emailEnabled,
+        config: {
+          smtp_host: smtpHost,
+          smtp_port: smtpPort,
+          smtp_username: smtpUsername,
+          smtp_password: smtpPassword,
+          from_address: fromAddress,
+          to_addresses: toAddresses,
+        }
       });
       showSaved();
     } catch (e) {

@@ -10,23 +10,6 @@ export const showNotifications = writable(false);
 export const sseConnected = writable(false);
 export const columns = writable([]);
 
-// Derived: tasks grouped by status
-export const tasksByStatus = derived(tasks, ($tasks) => {
-  const groups = {
-    pending: [],
-    in_progress: [],
-    completed: [],
-    failed: [],
-    cancelled: [],
-  };
-  for (const t of $tasks) {
-    if (groups[t.status]) {
-      groups[t.status].push(t);
-    }
-  }
-  return groups;
-});
-
 // Derived: filtered tasks (by project and source)
 export const filteredTasks = derived([tasks, selectedProjectId, selectedSource], ([$tasks, $pid, $src]) => {
   let result = $tasks;
