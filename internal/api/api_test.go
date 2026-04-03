@@ -1223,3 +1223,319 @@ func TestSlugify(t *testing.T) {
 		})
 	}
 }
+
+// --- SubtaskHandler tests ---
+
+func newTestSubtaskRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	handler := NewSubtaskHandler(database, sse)
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	return router, database
+}
+
+// createTaskViaAPI creates a task via the DB and returns it as a map.
+func createTaskViaAPI(t *testing.T, database *db.DB, title string) map[string]interface{} {
+	task := &models.Task{
+		ProjectID: "", // will be set by DB or use default project
+		Title:     title,
+		Status:    models.TaskStatusPending,
+		Priority:  models.PriorityMedium,
+	}
+	// Ensure a default project exists
+	p := &models.Project{Name: "default"}
+	database.CreateProject(p)
+	task.ProjectID = p.ID
+	if err := database.CreateTask(task); err != nil {
+		t.Fatalf("CreateTask(%q) failed: %v", title, err)
+	}
+	return map[string]interface{}{
+		"id":         task.ID,
+		"title":      task.Title,
+		"status":     string(task.Status),
+		"priority":   string(task.Priority),
+		"project_id": task.ProjectID,
+	}
+}
+
+func TestSubtaskHandler_ListSubtasks_Empty(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	// Create parent task
+	parent := createTaskViaAPI(t, database, "parent-task")
+	pid := parent["id"].(string)
+	database.UpdateTaskStatus(pid, models.TaskStatusPending, "")
+
+	req := httptest.NewRequest("GET", "/tasks/"+pid+"/subtasks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	subtasks := resp["subtasks"].([]interface{})
+	if len(subtasks) != 0 {
+		t.Errorf("expected 0 subtasks, got %d", len(subtasks))
+	}
+}
+
+func TestSubtaskHandler_ListSubtasks_WithChildren(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	// Create parent and two children
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	c1 := createTaskViaAPI(t, database, "child1")
+	c2 := createTaskViaAPI(t, database, "child2")
+
+	// Add subtasks via API
+	for _, child := range []map[string]interface{}{c1, c2} {
+		body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+		req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("add subtask failed: %d", w.Code)
+		}
+	}
+
+	req := httptest.NewRequest("GET", "/tasks/"+pid+"/subtasks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	subtasks := resp["subtasks"].([]interface{})
+	if len(subtasks) != 2 {
+		t.Errorf("expected 2 subtasks, got %d", len(subtasks))
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_LinkExisting(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "existing-child")
+
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	task := resp["task"].(map[string]interface{})
+	if task["id"] != child["id"] {
+		t.Errorf("expected child id %q, got %q", child["id"], task["id"])
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_CreateNew(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+
+	body := newJSONBody(map[string]interface{}{
+		"title":       "brand-new-subtask",
+		"description": "a description",
+		"priority":    "high",
+	})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	task := resp["task"].(map[string]interface{})
+	if task["title"] != "brand-new-subtask" {
+		t.Errorf("expected title 'brand-new-subtask', got %q", task["title"])
+	}
+	if task["priority"] != "high" {
+		t.Errorf("expected priority 'high', got %q", task["priority"])
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_NeitherChildNorTitle(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+
+	body := newJSONBody(map[string]interface{}{})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_InvalidJSON(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+
+	body := bytes.NewBufferString(`not json`)
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubtaskHandler_RemoveSubtask(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "child-to-remove")
+
+	// Add subtask
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Remove
+	req = httptest.NewRequest("DELETE", "/tasks/"+pid+"/subtasks/"+child["id"].(string), nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+
+	// Verify it's gone
+	req = httptest.NewRequest("GET", "/tasks/"+pid+"/subtasks", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	subtasks := resp["subtasks"].([]interface{})
+	if len(subtasks) != 0 {
+		t.Errorf("expected 0 subtasks after removal, got %d", len(subtasks))
+	}
+}
+
+func TestSubtaskHandler_ReorderSubtask(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "child-to-reorder")
+
+	// Add subtask
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Reorder to position 5
+	body = newJSONBody(map[string]interface{}{"position": 5})
+	req = httptest.NewRequest("PATCH", "/tasks/"+pid+"/subtasks/"+child["id"].(string)+"/position", body)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", w.Code)
+	}
+
+	// Verify position
+	req = httptest.NewRequest("GET", "/tasks/"+pid+"/subtasks", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	subtasks := resp["subtasks"].([]interface{})
+	if len(subtasks) != 1 {
+		t.Fatalf("expected 1 subtask, got %d", len(subtasks))
+	}
+	pos := subtasks[0].(map[string]interface{})["position"].(float64)
+	if int(pos) != 5 {
+		t.Errorf("expected position 5, got %v", int(pos))
+	}
+}
+
+func TestSubtaskHandler_ReorderSubtask_InvalidJSON(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "child")
+
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body = bytes.NewBufferString(`{invalid}`)
+	req = httptest.NewRequest("PATCH", "/tasks/"+pid+"/subtasks/"+child["id"].(string)+"/position", body)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubtaskHandler_GetParent_NoParent(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	child := createTaskViaAPI(t, database, "orphan")
+	cid := child["id"].(string)
+
+	req := httptest.NewRequest("GET", "/tasks/"+cid+"/parent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["parent"] != nil {
+		t.Errorf("expected nil parent, got %v", resp["parent"])
+	}
+}
+
+func TestSubtaskHandler_GetParent_WithParent(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	parent := createTaskViaAPI(t, database, "real-parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "child-with-parent")
+
+	// Make child a subtask
+	body := newJSONBody(map[string]interface{}{"child_id": child["id"]})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Get parent
+	req = httptest.NewRequest("GET", "/tasks/"+child["id"].(string)+"/parent", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	parentData := resp["parent"].(map[string]interface{})
+	if parentData["id"] != pid {
+		t.Errorf("expected parent id %q, got %q", pid, parentData["id"])
+	}
+}

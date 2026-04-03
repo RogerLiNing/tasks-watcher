@@ -204,13 +204,16 @@ func (d *Dispatcher) sendWebhooks(eventType string, task *models.Task) {
 }
 
 func matchesEvent(eventType, filter string) bool {
-	if filter == "" || filter == "*" || filter == "task.*" {
+	if filter == "" || filter == "*" {
 		return true
+	}
+	if filter == "task.*" {
+		return strings.HasPrefix(eventType, "task.")
 	}
 	parts := strings.Split(filter, ",")
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p == eventType || p == "task.*" {
+		if p == eventType {
 			return true
 		}
 	}
