@@ -107,6 +107,15 @@ func GetToolDefinitions() []Tool {
 				Required:   []string{"task_id"},
 			},
 		},
+		{
+			Name:        "task_delete",
+			Description: "Delete a task permanently.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: taskIDProps("task_id", "ID of the task to delete"),
+				Required:   []string{"task_id"},
+			},
+		},
 		// Project tools
 		{
 			Name:        "project_list",
@@ -132,6 +141,15 @@ func GetToolDefinitions() []Tool {
 			InputSchema: ToolInputSchema{
 				Type:       "object",
 				Properties: projectUpdateProps(),
+				Required:   []string{"project_id"},
+			},
+		},
+		{
+			Name:        "project_delete",
+			Description: "Delete a project and all its tasks.",
+			InputSchema: ToolInputSchema{
+				Type:       "object",
+				Properties: projectIDProps("project_id", "ID of the project to delete"),
 				Required:   []string{"project_id"},
 			},
 		},
@@ -201,6 +219,12 @@ func projectUpdateProps() map[string]SchemaProp {
 	}
 }
 
+func projectIDProps(idField, desc string) map[string]SchemaProp {
+	return map[string]SchemaProp{
+		idField: {Type: "string", Description: desc},
+	}
+}
+
 // ExecuteTool runs the named tool with given arguments
 func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[string]interface{}) (*mcp.ToolsCallResult, error) {
 	switch name {
@@ -218,6 +242,8 @@ func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[
 		return api.TaskFail(args)
 	case "task_update":
 		return api.TaskUpdate(args)
+	case "task_delete":
+		return api.TaskDelete(args)
 	case "task_cancel":
 		return api.TaskCancel(args)
 	case "project_list":
@@ -226,6 +252,8 @@ func ExecuteTool(ctx context.Context, api *client.Client, name string, args map[
 		return api.ProjectCreate(args)
 	case "project_update":
 		return api.ProjectUpdate(args)
+	case "project_delete":
+		return api.ProjectDelete(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}

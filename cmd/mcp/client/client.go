@@ -314,6 +314,26 @@ func (c *Client) TaskCancel(args map[string]interface{}) (*mcp.ToolsCallResult, 
 	return c.updateStatus(args, "cancelled", "")
 }
 
+func (c *Client) TaskDelete(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	id := str(args["task_id"], "")
+	if id == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+
+	_, status, err := c.do("DELETE", "/api/tasks/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+
+	text := fmt.Sprintf("🗑 Task deleted: [%s]", id[:8])
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
 func (c *Client) updateStatus(args map[string]interface{}, status, reason string) (*mcp.ToolsCallResult, error) {
 	id := str(args["task_id"], "")
 	if id == "" {
@@ -470,6 +490,26 @@ func (c *Client) ProjectUpdate(args map[string]interface{}) (*mcp.ToolsCallResul
 		text += fmt.Sprintf("\nDescription: %s", proj.Description)
 	}
 
+	return &mcp.ToolsCallResult{
+		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
+	}, nil
+}
+
+func (c *Client) ProjectDelete(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
+	id := str(args["project_id"], "")
+	if id == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+
+	_, status, err := c.do("DELETE", "/api/projects/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("API error (%d)", status)
+	}
+
+	text := fmt.Sprintf("🗑 Project deleted: [%s]", id[:8])
 	return &mcp.ToolsCallResult{
 		Content: []mcp.ContentBlock{{Type: "text", Text: text}},
 	}, nil
