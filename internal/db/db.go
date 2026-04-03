@@ -293,7 +293,7 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 	return t, nil
 }
 
-func (db *DB) ListTasks(projectID, status, assignee string) ([]models.Task, error) {
+func (db *DB) ListTasks(projectID, status, assignee, search string) ([]models.Task, error) {
 	query := `SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at FROM tasks WHERE 1=1`
 	args := []interface{}{}
 	if projectID != "" {
@@ -307,6 +307,10 @@ func (db *DB) ListTasks(projectID, status, assignee string) ([]models.Task, erro
 	if assignee != "" {
 		query += " AND assignee = ?"
 		args = append(args, assignee)
+	}
+	if search != "" {
+		query += " AND title LIKE ?"
+		args = append(args, "%"+search+"%")
 	}
 	query += " ORDER BY created_at DESC LIMIT 500"
 
@@ -568,7 +572,7 @@ func (db *DB) ExportAll() (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := db.ListTasks("", "", "")
+	tasks, err := db.ListTasks("", "", "", "")
 	if err != nil {
 		return nil, err
 	}

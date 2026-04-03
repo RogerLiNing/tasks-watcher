@@ -54,8 +54,9 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("project_id")
 	status := r.URL.Query().Get("status")
 	assignee := r.URL.Query().Get("assignee")
+	search := r.URL.Query().Get("search")
 
-	tasks, err := h.db.ListTasks(projectID, status, assignee)
+	tasks, err := h.db.ListTasks(projectID, status, assignee, search)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return

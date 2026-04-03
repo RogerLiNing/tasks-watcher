@@ -195,12 +195,12 @@ func taskUpdateCmd() *cobra.Command {
 }
 
 func taskListCmd() *cobra.Command {
-	var project, status, assignee string
+	var project, status, assignee, search string
 
 	cmd := &cobra.Command{
 		Use:     "list",
 		Short:   "List tasks",
-		Example: "  tasks-watcher task list\n  tasks-watcher task list -s in_progress\n  tasks-watcher task list -p <project-id>",
+		Example: "  tasks-watcher task list\n  tasks-watcher task list -s in_progress\n  tasks-watcher task list --search auth",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "/api/tasks?"
 			if project != "" {
@@ -211,6 +211,9 @@ func taskListCmd() *cobra.Command {
 			}
 			if assignee != "" {
 				path += "assignee=" + assignee + "&"
+			}
+			if search != "" {
+				path += "search=" + search + "&"
 			}
 
 			resp, err := apiRequest("GET", path, nil)
@@ -256,6 +259,7 @@ func taskListCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Filter by project ID")
 	cmd.Flags().StringVarP(&status, "status", "s", "", "Filter by status")
 	cmd.Flags().StringVarP(&assignee, "assignee", "a", "", "Filter by assignee")
+	cmd.Flags().StringVar(&search, "search", "", "Search by title")
 	return cmd
 }
 

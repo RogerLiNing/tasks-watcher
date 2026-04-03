@@ -46,7 +46,7 @@ func GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "task_list",
-			Description: "List all tasks, optionally filtered by project, status, or assignee.",
+			Description: "List all tasks, optionally filtered by project, status, assignee, or search term.",
 			InputSchema: ToolInputSchema{
 				Type:       "object",
 				Properties: taskListProps(),
@@ -228,6 +228,7 @@ func taskListProps() map[string]SchemaProp {
 		"project_id": {Type: "string", Description: "Filter by project ID"},
 		"status":    {Type: "string", Description: "Filter by status", Enum: []string{"pending", "in_progress", "completed", "failed", "cancelled"}},
 		"assignee":  {Type: "string", Description: "Filter by assignee"},
+		"search":    {Type: "string", Description: "Search by title (case-insensitive substring match)"},
 	}
 }
 
