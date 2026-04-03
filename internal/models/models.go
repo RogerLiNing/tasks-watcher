@@ -86,6 +86,7 @@ type WebhookConfig struct {
 // Event types
 const (
 	EventTaskCreated   = "task.created"
+	EventTaskUpdated   = "task.updated"
 	EventTaskStarted   = "task.started"
 	EventTaskCompleted = "task.completed"
 	EventTaskFailed    = "task.failed"

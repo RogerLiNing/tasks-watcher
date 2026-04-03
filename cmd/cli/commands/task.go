@@ -22,6 +22,7 @@ func TaskCommand() *cobra.Command {
 		Long:  "Create, list, update, and delete tasks. Each task is tagged with its source. Tasks can be marked as sequential (children must complete in order) or parallel (children run independently).",
 		Example: `  tasks-watcher task create -t "Fix auth bug" -P high -p myproject
   tasks-watcher task create -t "Multi-step refactor" --task-mode sequential
+  tasks-watcher task update <task-id> -t "New title" -P high
   tasks-watcher task list -s pending
   tasks-watcher task start <task-id>
   tasks-watcher task complete <task-id>
@@ -32,6 +33,7 @@ func TaskCommand() *cobra.Command {
 
 	taskCmd.AddCommand(
 		taskCreateCmd(),
+		taskUpdateCmd(),
 		taskListCmd(),
 		taskStartCmd(),
 		taskCompleteCmd(),
@@ -141,6 +143,54 @@ func taskCreateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
 	cmd.Flags().StringVar(&taskMode, "task-mode", "", "Task mode: sequential or parallel")
 	cmd.MarkFlagRequired("title")
+	return cmd
+}
+
+func taskUpdateCmd() *cobra.Command {
+	var title, description, priority, assignee, taskMode string
+
+	cmd := &cobra.Command{
+		Use:   "update <task-id>",
+		Short: "Update a task's title, description, priority, assignee, or mode",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if title != "" {
+				body["title"] = title
+			}
+			if description != "" {
+				body["description"] = description
+			}
+			if priority != "" {
+				body["priority"] = priority
+			}
+			if assignee != "" {
+				body["assignee"] = assignee
+			}
+			if taskMode != "" {
+				body["task_mode"] = taskMode
+			}
+			if len(body) == 0 {
+				return fmt.Errorf("no fields to update: specify --title, --description, --priority, --assignee, or --task-mode")
+			}
+
+			resp, err := apiRequest("PUT", "/api/tasks/"+args[0], body)
+			if err != nil {
+				return err
+			}
+			var task map[string]interface{}
+			if err := json.Unmarshal(resp, &task); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
+			fmt.Printf("✓ Task updated: %s [%s]\n", task["title"], task["id"])
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&title, "title", "t", "", "New title")
+	cmd.Flags().StringVarP(&description, "description", "d", "", "New description")
+	cmd.Flags().StringVarP(&priority, "priority", "P", "", "Priority: low, medium, high, urgent")
+	cmd.Flags().StringVarP(&assignee, "assignee", "a", "", "Assignee")
+	cmd.Flags().StringVar(&taskMode, "task-mode", "", "Task mode: sequential or parallel")
 	return cmd
 }
 

@@ -208,7 +208,7 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	BroadcastTaskEvent(h.sse, models.EventTaskCreated, t)
+	BroadcastTaskEvent(h.sse, models.EventTaskUpdated, t)
 	json.NewEncoder(w).Encode(t)
 }
 
