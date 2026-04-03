@@ -255,6 +255,44 @@ func TestTaskHandler_Create_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestTaskHandler_Create_WithProjectName(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+
+	body := `{"title": "Task with project", "project_name": "my-project"}`
+	req := httptest.NewRequest("POST", "/tasks", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	if task.ProjectID == "" {
+		t.Error("expected project_id to be set")
+	}
+}
+
+func TestTaskHandler_Create_WithRepoPath(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+
+	body := `{"title": "Task with repo", "repo_path": "/Users/me/src/myapp"}`
+	req := httptest.NewRequest("POST", "/tasks", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var task models.Task
+	json.NewDecoder(w.Body).Decode(&task)
+	if task.ProjectID == "" {
+		t.Error("expected project_id to be set from repo_path")
+	}
+}
+
 func TestTaskHandler_Get_NotFound(t *testing.T) {
 	router, _ := newTestTaskRouter(t)
 
@@ -384,6 +422,51 @@ func TestTaskHandler_Update_InvalidJSON(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestTaskHandler_Update_AssigneeAndSource(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+
+	req := httptest.NewRequest("PUT", "/tasks/"+task.ID,
+		bytes.NewBufferString(`{"assignee":"alice","source":"claude-code"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Assignee != "alice" {
+		t.Errorf("expected assignee='alice', got %q", updated.Assignee)
+	}
+	if updated.Source != "claude-code" {
+		t.Errorf("expected source='claude-code', got %q", updated.Source)
+	}
+}
+
+func TestTaskHandler_Update_AddsDescription(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	// Create task without description
+	task := createTaskViaRouter(t, router, "Test task")
+
+	// Update with description (task.Description is nil before)
+	req := httptest.NewRequest("PUT", "/tasks/"+task.ID,
+		bytes.NewBufferString(`{"description":"new description"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Description == nil {
+		t.Fatal("expected description to be set")
 	}
 }
 
@@ -594,6 +677,159 @@ func TestTaskHandler_UpdateStatus_InvalidStatus(t *testing.T) {
 	json.NewDecoder(getW.Body).Decode(&task)
 	if task.Status != models.TaskStatusPending {
 		t.Errorf("expected status 'pending' (invalid status ignored), got %q", task.Status)
+	}
+}
+
+// updateStatus is a helper that returns the response status code.
+func updateStatus(router *mux.Router, taskID, status string) int {
+	req := httptest.NewRequest("PATCH", "/tasks/"+taskID+"/status",
+		bytes.NewBufferString(`{"status":"`+status+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w.Code
+}
+
+func TestTaskHandler_UpdateStatus_InvalidTransition_PendingToCompleted(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	if code := updateStatus(router, task.ID, "completed"); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for pending→completed, got %d", code)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_InvalidTransition_PendingToFailed(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	if code := updateStatus(router, task.ID, "failed"); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for pending→failed, got %d", code)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_Valid_InProgressToCompleted(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	if code := updateStatus(router, task.ID, "in_progress"); code != http.StatusOK {
+		t.Fatalf("expected 200 for pending→in_progress, got %d", code)
+	}
+	if code := updateStatus(router, task.ID, "completed"); code != http.StatusOK {
+		t.Errorf("expected 200 for in_progress→completed, got %d", code)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_Valid_InProgressToFailed(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	_ = updateStatus(router, task.ID, "in_progress")
+	if code := updateStatus(router, task.ID, "failed"); code != http.StatusOK {
+		t.Errorf("expected 200 for in_progress→failed, got %d", code)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_Valid_InProgressToCancelled(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	_ = updateStatus(router, task.ID, "in_progress")
+	if code := updateStatus(router, task.ID, "cancelled"); code != http.StatusOK {
+		t.Errorf("expected 200 for in_progress→cancelled, got %d", code)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_Valid_PendingToCancelled(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	if code := updateStatus(router, task.ID, "cancelled"); code != http.StatusOK {
+		t.Errorf("expected 200 for pending→cancelled, got %d", code)
+	}
+}
+
+// newTestTaskDepRouter creates a router with TaskHandler + DepHandler.
+func newTestTaskDepRouter(t *testing.T) (*mux.Router, *db.DB) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("test-api-key")
+	taskHandler := NewTaskHandler(database, sse, nil)
+	depHandler := NewDepHandler(database, sse)
+	router := mux.NewRouter()
+	taskHandler.Register(router)
+	depHandler.Register(router)
+	return router, database
+}
+
+func TestTaskHandler_UpdateStatus_BlockedByDependency(t *testing.T) {
+	router, database := newTestTaskDepRouter(t)
+
+	// Create a blocker (in_progress).
+	blocker := makeTask(t, database, "", "Blocker", models.TaskStatusInProgress)
+	// Create blocked task (pending).
+	blocked := makeTask(t, database, "", "Blocked", models.TaskStatusPending)
+
+	// Add blocker as dependency of blocked.
+	body := newJSONBody(map[string]string{"blocker_id": blocker})
+	req := httptest.NewRequest("POST", "/tasks/"+blocked+"/dependencies", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("failed to add dependency: %d %s", w.Code, w.Body.String())
+	}
+
+	// Try to start blocked task → should be blocked.
+	updateReq := httptest.NewRequest("PATCH", "/tasks/"+blocked+"/status",
+		bytes.NewBufferString(`{"status":"in_progress"}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateW := httptest.NewRecorder()
+	router.ServeHTTP(updateW, updateReq)
+
+	if updateW.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for blocked task, got %d: %s", updateW.Code, updateW.Body.String())
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(updateW.Body).Decode(&resp)
+	if resp["can_start"] != false {
+		t.Errorf("expected can_start=false, got %v", resp["can_start"])
+	}
+}
+
+func TestTaskHandler_UpdateStatus_WithReason(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	task := createTaskViaRouter(t, router, "Test task")
+	_ = updateStatus(router, task.ID, "in_progress")
+
+	req := httptest.NewRequest("PATCH", "/tasks/"+task.ID+"/status",
+		bytes.NewBufferString(`{"status":"failed","reason":"something went wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.ErrorMessage != "something went wrong" {
+		t.Errorf("expected error_message='something went wrong', got %q", updated.ErrorMessage)
+	}
+}
+
+func TestTaskHandler_List_InvalidLimit(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	// parseInt returns 0 for invalid values → uses default limit 100.
+	// This tests the parseInt fallback branch.
+	req := httptest.NewRequest("GET", "/tasks?limit=notanumber", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestTaskHandler_List_InvalidOffset(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+	req := httptest.NewRequest("GET", "/tasks?offset=xyz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
 	}
 }
 
