@@ -112,3 +112,30 @@ func TestLoad_DefaultValues(t *testing.T) {
 		t.Error("expected default Notify=true")
 	}
 }
+
+func TestLoad_UsesGetDataDir(t *testing.T) {
+	// Do NOT set TASKS_WATCHER_DATA_DIR so Load falls through to getDataDir()
+	os.Unsetenv("TASKS_WATCHER_DATA_DIR")
+	os.Unsetenv("TASKS_WATCHER_PORT")
+	os.Unsetenv("TASKS_WATCHER_DB_PATH")
+	os.Unsetenv("TASKS_WATCHER_NOTIFY")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_DATA_DIR")
+		os.Unsetenv("TASKS_WATCHER_PORT")
+		os.Unsetenv("TASKS_WATCHER_DB_PATH")
+		os.Unsetenv("TASKS_WATCHER_NOTIFY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	home, _ := os.UserHomeDir()
+	expected := filepath.Join(home, ".tasks-watcher")
+	if cfg.DataDir != expected {
+		t.Errorf("expected data dir %s, got %s", expected, cfg.DataDir)
+	}
+	if cfg.DBPath != filepath.Join(expected, "tasks.db") {
+		t.Errorf("expected db path under %s, got %s", expected, cfg.DBPath)
+	}
+}
