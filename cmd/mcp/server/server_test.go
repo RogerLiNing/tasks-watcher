@@ -169,25 +169,82 @@ func TestExecuteTool_AllTools(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/tasks":
-			w.Write([]byte(`{"tasks":[],"total":0}`))
+			if r.Method == "GET" {
+				w.Write([]byte(`{"tasks":[],"total":0}`))
+			} else {
+				w.Write([]byte(`{"id":"task-id-12345678","title":"Test","status":"pending","priority":"medium"}`))
+			}
+		case "/api/tasks/task-id-12345678/status":
+			w.Write([]byte(`{"id":"task-id-12345678","title":"T","status":"in_progress"}`))
+		case "/api/tasks/tid-12345678":
+			w.Write([]byte(`{"id":"tid-12345678","title":"T","status":"pending","priority":"medium","assignee":"","task_mode":"parallel","created_at":1}`))
+		case "/api/tasks/tid-12345678/subtasks":
+			w.Write([]byte(`{"subtasks":[]}`))
+		case "/api/tasks/tid-12345678/dependencies":
+			w.Write([]byte(`{"blockers":[]}`))
+		case "/api/tasks/tid-12345678/dependents":
+			w.Write([]byte(`{"dependents":[]}`))
+		case "/api/tasks/tid-12345678/status":
+			w.Write([]byte(`{"id":"tid-12345678","title":"T","status":"in_progress"}`))
 		case "/api/projects":
 			w.Write([]byte(`{"projects":[]}`))
+		case "/api/projects/pid-12345678":
+			w.Write([]byte(`{"id":"pid-12345678","name":"P"}`))
+		case "/api/tasks/parent-12345678/subtasks":
+			if r.Method == "POST" {
+				w.Write([]byte(`{"task":{"id":"child-12345678","title":"sub","status":"pending"}}`))
+			} else {
+				w.Write([]byte(`{"subtasks":[]}`))
+			}
+		case "/api/tasks/task-12345678/can-start":
+			w.Write([]byte(`{"can_start":true}`))
+		case "/api/tasks/task-12345678/dependencies":
+			w.Write([]byte(`{"blockers":[]}`))
+		case "/api/tasks/task-12345678/dependents":
+			w.Write([]byte(`{"dependents":[]}`))
 		default:
-			w.WriteHeader(http.StatusNoContent)
+			if r.Method == "DELETE" || r.Method == "PATCH" || r.Method == "PUT" || r.Method == "POST" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
 	c := newTestClientForServer(server.URL)
 
-	tools := []string{
-		"task_list", "project_list",
+	tools := []struct {
+		name string
+		args map[string]interface{}
+	}{
+		{"task_list", nil},
+		{"task_create", map[string]interface{}{"title": "Test", "project_name": "p"}},
+		{"task_show", map[string]interface{}{"task_id": "tid-12345678"}},
+		{"task_start", map[string]interface{}{"task_id": "tid-12345678"}},
+		{"task_complete", map[string]interface{}{"task_id": "tid-12345678"}},
+		{"task_fail", map[string]interface{}{"task_id": "tid-12345678", "reason": "fail"}},
+		{"task_update", map[string]interface{}{"task_id": "tid-12345678", "title": "New"}},
+		{"task_delete", map[string]interface{}{"task_id": "tid-12345678"}},
+		{"task_cancel", map[string]interface{}{"task_id": "tid-12345678"}},
+		{"project_list", nil},
+		{"project_create", map[string]interface{}{"name": "new-proj"}},
+		{"project_update", map[string]interface{}{"project_id": "pid-12345678", "name": "updated"}},
+		{"project_delete", map[string]interface{}{"project_id": "pid-12345678"}},
+		{"subtask_create", map[string]interface{}{"task_id": "parent-12345678", "title": "sub"}},
+		{"subtask_list", map[string]interface{}{"task_id": "parent-12345678"}},
+		{"subtask_reorder", map[string]interface{}{"task_id": "parent-12345678", "child_id": "c1-12345678", "position": 1}},
+		{"dep_add", map[string]interface{}{"task_id": "tid-12345678", "blocker_id": "b1-12345678"}},
+		{"dep_list", map[string]interface{}{"task_id": "task-12345678"}},
+		{"dep_check", map[string]interface{}{"task_id": "task-12345678"}},
 	}
 	for _, tool := range tools {
-		_, err := ExecuteTool(context.Background(), c, tool, nil)
-		if err != nil {
-			t.Errorf("ExecuteTool(%s) failed: %v", tool, err)
-		}
+		t.Run(tool.name, func(t *testing.T) {
+			_, err := ExecuteTool(context.Background(), c, tool.name, tool.args)
+			if err != nil {
+				t.Errorf("ExecuteTool(%s) failed: %v", tool.name, err)
+			}
+		})
 	}
 }
 
