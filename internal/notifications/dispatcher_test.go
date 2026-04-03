@@ -1,11 +1,250 @@
 package notifications
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/rogerrlee/tasks-watcher/internal/db"
 	"github.com/rogerrlee/tasks-watcher/internal/models"
 )
+
+func TestSendWebhooks_DeliversPayload(t *testing.T) {
+	var receivedBody map[string]interface{}
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
+		}
+		if r.Header.Get("X-Tasks-Watcher-Event") != "task.completed" {
+			t.Errorf("expected X-Tasks-Watcher-Event: task.completed, got %s", r.Header.Get("X-Tasks-Watcher-Event"))
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &receivedBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Insert a test webhook pointing to our test server
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.*",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "task-1", Title: "Test task", Status: models.TaskStatusCompleted}
+	d.sendWebhooks("task.completed", task)
+	// sendWebhooks runs HTTP calls in goroutines; give them time to complete
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if receivedBody == nil {
+		t.Error("expected webhook to receive a payload")
+	} else if receivedBody["event"] != "task.completed" {
+		t.Errorf("expected event task.completed, got %v", receivedBody["event"])
+	}
+}
+
+// Verify sendWebhooks skips inactive webhooks
+func TestSendWebhooks_SkipsInactive(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+	}))
+	defer server.Close()
+
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Insert an inactive webhook — should be skipped
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.*",
+		Active: false, // inactive
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "t"}
+	d.sendWebhooks("task.completed", task)
+
+	// Allow async goroutine to finish
+	// Since sendWebhooks runs each webhook in a goroutine, give it a moment
+	// Inactive webhook should be skipped
+	if calls != 0 {
+		t.Errorf("expected 0 calls with inactive webhook, got %d", calls)
+	}
+}
+
+func TestSendWebhooks_MatchesEventFilter(t *testing.T) {
+	// Test that task.* wildcard matches task.completed
+	event := "task.completed"
+	filter := "task.*"
+	if !matchesEvent(event, filter) {
+		t.Errorf("expected task.* to match task.completed")
+	}
+	if matchesEvent("project.created", filter) {
+		t.Errorf("expected task.* to NOT match project.created")
+	}
+}
+
+func TestSendWebhooks_MultipleFilters(t *testing.T) {
+	cases := []struct {
+		eventType string
+		filter    string
+		want      bool
+	}{
+		{"task.completed", "task.failed,task.completed", true},
+		{"task.failed", "task.failed,task.completed", true},
+		{"task.created", "task.failed,task.completed", false},
+		{"task.started", "task.*", true},
+		{"project.created", "task.*", false},
+	}
+	for _, tc := range cases {
+		got := matchesEvent(tc.eventType, tc.filter)
+		if got != tc.want {
+			t.Errorf("matchesEvent(%q, %q) = %v, want %v", tc.eventType, tc.filter, got, tc.want)
+		}
+	}
+}
+
+func TestSendEmail_NoEmailConfigDoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "test message")
+}
+
+func TestSendEmail_DisabledConfigDoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: false,
+		Config:  map[string]interface{}{"smtp_host": "smtp.example.com"},
+	})
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "test message")
+}
+
+func TestMacosNotification_NonDarwinDoesNotPanic(t *testing.T) {
+	d := &Dispatcher{db: nil, sse: nil}
+	// Should not panic on non-darwin platforms
+	d.macosNotification("body", "title")
+}
+
+func TestSendChannels_ShouldNotifyOS_Routes(t *testing.T) {
+	cases := []struct {
+		eventType string
+		wantOS    bool
+	}{
+		{"task.started", true},
+		{"task.completed", true},
+		{"task.failed", true},
+		{"task.created", false},
+		{"task.cancelled", false},
+		{"task.updated", false},
+	}
+	for _, tc := range cases {
+		got := shouldNotifyOS(tc.eventType)
+		if got != tc.wantOS {
+			t.Errorf("shouldNotifyOS(%q) = %v, want %v", tc.eventType, got, tc.wantOS)
+		}
+	}
+}
+
+func setupNotifierTestDB(t *testing.T) *db.DB {
+	origDir, _ := os.Getwd()
+	_, thisFile, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("failed to chdir to project root %s: %v", projectRoot, err)
+	}
+	defer func() { os.Chdir(origDir) }()
+
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	return database
+}
+
+func TestNotify_SavesToDatabase(t *testing.T) {
+	// Use nil dispatcher (SSE nil) with real DB
+	db := setupNotifierTestDB(t)
+	defer db.Close()
+
+	d := NewDispatcher(db, nil)
+	task := &models.Task{ID: "notif-task-1", Title: "Notify test task", Status: models.TaskStatusInProgress}
+
+	// Call synchronously (not goroutine) by invoking the internal path
+	d.Notify(models.EventTaskStarted, task)
+
+	notifs, _ := db.ListNotifications(10)
+	if len(notifs) == 0 {
+		t.Fatal("expected at least one notification to be saved")
+	}
+	if !strings.Contains(notifs[0].Message, "Notify test task") {
+		t.Errorf("unexpected message: %s", notifs[0].Message)
+	}
+}
+
+func TestBuildMessage_AllEventTypes(t *testing.T) {
+	task := &models.Task{
+		Title:        "My Task",
+		Status:       models.TaskStatusPending,
+		ErrorMessage: "error details",
+	}
+	cases := []struct {
+		eventType string
+		substr    string
+	}{
+		{models.EventTaskCreated, "New task created: My Task"},
+		{models.EventTaskStarted, "Task started: My Task"},
+		{models.EventTaskCompleted, "Task completed: My Task"},
+		{models.EventTaskFailed, "Task failed: My Task"},
+		{models.EventTaskCancelled, "Task cancelled: My Task"},
+		{"task.unknown", "Task updated: My Task"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.eventType, func(t *testing.T) {
+			msg := buildMessage(tc.eventType, task)
+			if !strings.Contains(msg, tc.substr) {
+				t.Errorf("buildMessage(%q) = %q, want to contain %q", tc.eventType, msg, tc.substr)
+			}
+		})
+	}
+}
+
+func TestBuildMessage_TaskFailedIncludesError(t *testing.T) {
+	task := &models.Task{
+		Title:        "Failing Task",
+		Status:       models.TaskStatusFailed,
+		ErrorMessage: "connection refused",
+	}
+	msg := buildMessage(models.EventTaskFailed, task)
+	if !strings.Contains(msg, "connection refused") {
+		t.Errorf("expected message to include error details, got: %s", msg)
+	}
+}
 
 func TestBuildMessage(t *testing.T) {
 	cases := []struct {

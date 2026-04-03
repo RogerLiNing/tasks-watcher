@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/rogerrlee/tasks-watcher/internal/config"
 	"github.com/rogerrlee/tasks-watcher/internal/db"
 	"github.com/rogerrlee/tasks-watcher/internal/models"
 )
@@ -638,24 +639,10 @@ func TestAuthMiddleware_MissingAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
 
 	router := mux.NewRouter()
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
-				key := r.URL.Query().Get("api_key")
-				if key != "my-secret-key" {
-					http.Error(w, `{"error":"missing Authorization header"}`, http.StatusUnauthorized)
-					return
-				}
-			} else if auth != "Bearer my-secret-key" {
-				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	router.Use(auth.Authenticate)
 	handler.Register(router)
 
 	// No auth header
@@ -671,24 +658,10 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
 
 	router := mux.NewRouter()
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
-				key := r.URL.Query().Get("api_key")
-				if key != "my-secret-key" {
-					http.Error(w, `{"error":"missing Authorization header"}`, http.StatusUnauthorized)
-					return
-				}
-			} else if auth != "Bearer my-secret-key" {
-				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	router.Use(auth.Authenticate)
 	handler.Register(router)
 
 	// Wrong bearer token
@@ -701,28 +674,34 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_InvalidFormat(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	// Non-Bearer format
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 with invalid format, got %d", w.Code)
+	}
+}
+
 func TestAuthMiddleware_ValidToken(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
 
 	router := mux.NewRouter()
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
-				key := r.URL.Query().Get("api_key")
-				if key != "my-secret-key" {
-					http.Error(w, `{"error":"missing Authorization header"}`, http.StatusUnauthorized)
-					return
-				}
-			} else if auth != "Bearer my-secret-key" {
-				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	router.Use(auth.Authenticate)
 	handler.Register(router)
 
 	req := httptest.NewRequest("GET", "/tasks", nil)
@@ -738,24 +717,10 @@ func TestAuthMiddleware_QueryParamAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
 
 	router := mux.NewRouter()
-	router.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if auth == "" {
-				key := r.URL.Query().Get("api_key")
-				if key != "my-secret-key" {
-					http.Error(w, `{"error":"missing Authorization header"}`, http.StatusUnauthorized)
-					return
-				}
-			} else if auth != "Bearer my-secret-key" {
-				http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	router.Use(auth.Authenticate)
 	handler.Register(router)
 
 	req := httptest.NewRequest("GET", "/tasks?api_key=my-secret-key", nil)
@@ -763,6 +728,62 @@ func TestAuthMiddleware_QueryParamAuth(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 with api_key query param, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_SkipsSSERoute(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	// SSE endpoint should be accessible without auth
+	req := httptest.NewRequest("GET", "/tasks/api/events", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	// Should not return 401 — the route should be reachable (SSE handler returns its own status)
+	if w.Code == http.StatusUnauthorized {
+		t.Error("SSE route should be skipped by auth middleware")
+	}
+}
+
+func TestAuthMiddleware_SkipsHealthRoute(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	req := httptest.NewRequest("GET", "/tasks/api/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code == http.StatusUnauthorized {
+		t.Error("health route should be skipped by auth middleware")
+	}
+}
+
+func TestAuthMiddleware_SkipsKeyRoute(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	req := httptest.NewRequest("GET", "/tasks/api/key", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code == http.StatusUnauthorized {
+		t.Error("key route should be skipped by auth middleware")
 	}
 }
 
