@@ -2,10 +2,13 @@ package notifications
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -667,4 +670,69 @@ func TestSendWebhooks_DBError_DoesNotPanic(t *testing.T) {
 	d := NewDispatcher(database, nil)
 	task := &models.Task{ID: "t", Title: "Test"}
 	d.sendWebhooks("task.completed", task) // should not panic
+}
+
+func TestSendEmail_WithLocalSMTPServer(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("skipping on darwin")
+	}
+	// Find a free port
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Skipf("cannot find free port: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+
+	// Start a local Python SMTP server
+	script := fmt.Sprintf(`
+import smtpd
+import asyncore
+server = smtpd.SMTPServer(('localhost', %d), None)
+asyncore.loop()
+`, port)
+	cmd := exec.Command("python3", "-c", script)
+	if err := cmd.Start(); err != nil {
+		t.Skipf("cannot start SMTP server: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond) // give server time to start
+	defer func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}()
+
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_host":     "localhost",
+			"smtp_port":     float64(port),
+			"smtp_username": "user",
+			"smtp_password": "pass",
+			"from_address":  "from@example.com",
+			"to_addresses":  []interface{}{"to@example.com"},
+		},
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test task", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "Task completed: Test task")
+
+	// Give goroutine time to complete
+	time.Sleep(500 * time.Millisecond)
+}
+
+func TestMacosNotification_NonDarwinReturnsEarly(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("only runs on non-darwin")
+	}
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	d := NewDispatcher(database, nil)
+	// Should not panic on non-Darwin
+	d.macosNotification("body", "title")
 }
