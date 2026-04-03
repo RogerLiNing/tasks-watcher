@@ -2248,3 +2248,23 @@ func TestSetSubtaskPosition_NotASubtask(t *testing.T) {
 		t.Fatalf("SetSubtaskPosition for non-subtask should not error, got: %v", err)
 	}
 }
+
+func TestGetParentID_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetParentID("any-id")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestExportAll_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.ExportAll()
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}

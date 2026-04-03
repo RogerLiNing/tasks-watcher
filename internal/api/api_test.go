@@ -3486,3 +3486,124 @@ func TestProjectHandler_GetOrCreateByRepo_DBError(t *testing.T) {
 		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// --- UpdateStatus dedicated tests ---
+
+func TestTaskHandler_UpdateStatus_ToCompleted(t *testing.T) {
+	router, database := newTestTaskRouter(t)
+	task := createTaskViaAPI(t, database, "to-complete")
+	tid := task["id"].(string)
+
+	// Start first
+	updateTaskStatusViaRouter(t, router, tid, "in_progress")
+
+	// Complete
+	body := newJSONBody(map[string]string{"status": "completed"})
+	req := httptest.NewRequest("PATCH", "/tasks/"+tid+"/status", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Status != models.TaskStatusCompleted {
+		t.Errorf("expected status completed, got %s", updated.Status)
+	}
+	if updated.CompletedAt == 0 {
+		t.Error("expected CompletedAt to be set")
+	}
+}
+
+func TestTaskHandler_UpdateStatus_ToFailed(t *testing.T) {
+	router, database := newTestTaskRouter(t)
+	task := createTaskViaAPI(t, database, "to-fail")
+	tid := task["id"].(string)
+
+	updateTaskStatusViaRouter(t, router, tid, "in_progress")
+
+	body := newJSONBody(map[string]string{"status": "failed", "reason": "something went wrong"})
+	req := httptest.NewRequest("PATCH", "/tasks/"+tid+"/status", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Status != models.TaskStatusFailed {
+		t.Errorf("expected status failed, got %s", updated.Status)
+	}
+	if updated.ErrorMessage != "something went wrong" {
+		t.Errorf("expected error message 'something went wrong', got %q", updated.ErrorMessage)
+	}
+	if updated.CompletedAt == 0 {
+		t.Error("expected CompletedAt to be set for failed")
+	}
+}
+
+func TestTaskHandler_UpdateStatus_ToCancelled(t *testing.T) {
+	router, database := newTestTaskRouter(t)
+	task := createTaskViaAPI(t, database, "to-cancel")
+	tid := task["id"].(string)
+
+	body := newJSONBody(map[string]string{"status": "cancelled"})
+	req := httptest.NewRequest("PATCH", "/tasks/"+tid+"/status", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Task
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.Status != models.TaskStatusCancelled {
+		t.Errorf("expected status cancelled, got %s", updated.Status)
+	}
+}
+
+func TestTaskHandler_UpdateStatus_InvalidTransition(t *testing.T) {
+	router, database := newTestTaskRouter(t)
+	task := createTaskViaAPI(t, database, "invalid-trans")
+	tid := task["id"].(string)
+
+	// Try to complete directly from pending (should fail: pending→completed invalid)
+	body := newJSONBody(map[string]string{"status": "completed"})
+	req := httptest.NewRequest("PATCH", "/tasks/"+tid+"/status", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid transition, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Update_WithRepoPath(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	// Create first
+	body := newJSONBody(map[string]string{"name": "proj"})
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var created models.Project
+	json.NewDecoder(w.Body).Decode(&created)
+
+	// Update with repo_path
+	updateBody := newJSONBody(map[string]string{"repo_path": "/test/repo"})
+	req = httptest.NewRequest("PUT", "/projects/"+created.ID, updateBody)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated models.Project
+	json.NewDecoder(w.Body).Decode(&updated)
+	if updated.RepoPath != "/test/repo" {
+		t.Errorf("expected repo_path '/test/repo', got %q", updated.RepoPath)
+	}
+}
