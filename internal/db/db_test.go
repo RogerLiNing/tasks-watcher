@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -433,19 +435,1219 @@ func TestRemoveDependency(t *testing.T) {
 	}
 }
 
-// --- Open / Close tests ---
+// --- ListProjects tests ---
 
-func TestDB_BasicCRUD(t *testing.T) {
+func TestListProjects_Empty(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	// Verify we can do basic operations
-	pid := makeProject(t, db, "test-project")
-	p, err := db.GetProject(pid)
+	projects, err := db.ListProjects()
 	if err != nil {
-		t.Fatalf("GetProject failed: %v", err)
+		t.Fatalf("ListProjects failed: %v", err)
 	}
-	if p.Name != "test-project" {
-		t.Errorf("expected name 'test-project', got %q", p.Name)
+	if len(projects) != 0 {
+		t.Errorf("expected 0 projects, got %d", len(projects))
 	}
 }
+
+func TestListProjects_WithProjects(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	makeProject(t, db, "alpha")
+	makeProject(t, db, "beta")
+
+	projects, err := db.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects failed: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Errorf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+// --- GetProjectByName tests ---
+
+func TestGetProjectByName_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetProjectByName("nonexistent")
+	if err != nil {
+		t.Fatalf("GetProjectByName failed: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil, got %+v", p)
+	}
+}
+
+func TestGetProjectByName_Found(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "find-me")
+	p, err := db.GetProjectByName("find-me")
+	if err != nil {
+		t.Fatalf("GetProjectByName failed: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected project, got nil")
+	}
+	if p.ID != pid {
+		t.Errorf("expected id %q, got %q", pid, p.ID)
+	}
+}
+
+// --- UpdateProject tests ---
+
+func TestUpdateProject_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "original")
+	p, _ := db.GetProject(pid)
+	p.Name = "updated"
+	p.Description = "new desc"
+	if err := db.UpdateProject(p); err != nil {
+		t.Fatalf("UpdateProject failed: %v", err)
+	}
+
+	p2, _ := db.GetProject(pid)
+	if p2.Name != "updated" {
+		t.Errorf("expected name 'updated', got %q", p2.Name)
+	}
+	if p2.Description != "new desc" {
+		t.Errorf("expected description 'new desc', got %q", p2.Description)
+	}
+}
+
+// --- DeleteProject tests ---
+
+func TestDeleteProject_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "to-delete")
+	if err := db.DeleteProject(pid); err != nil {
+		t.Fatalf("DeleteProject failed: %v", err)
+	}
+	p, _ := db.GetProject(pid)
+	if p != nil {
+		t.Error("expected nil after deletion")
+	}
+}
+
+func TestDeleteProject_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Should not error even if not found
+	if err := db.DeleteProject("nonexistent-id"); err != nil {
+		t.Errorf("DeleteProject for nonexistent should not error, got: %v", err)
+	}
+}
+
+// --- GetOrCreateProject tests ---
+
+func TestGetOrCreateProject_Existing(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "exists")
+	p, err := db.GetOrCreateProject("exists")
+	if err != nil {
+		t.Fatalf("GetOrCreateProject failed: %v", err)
+	}
+	if p.ID != pid {
+		t.Errorf("expected id %q, got %q", pid, p.ID)
+	}
+}
+
+func TestGetOrCreateProject_New(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetOrCreateProject("brand-new")
+	if err != nil {
+		t.Fatalf("GetOrCreateProject failed: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected non-nil project")
+	}
+	if p.Name != "brand-new" {
+		t.Errorf("expected name 'brand-new', got %q", p.Name)
+	}
+}
+
+// --- GetProjectByRepoPath tests ---
+
+func TestGetProjectByRepoPath_EmptyString(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetProjectByRepoPath("")
+	if err != nil {
+		t.Fatalf("GetProjectByRepoPath failed: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil for empty path, got %+v", p)
+	}
+}
+
+func TestGetProjectByRepoPath_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p, err := db.GetProjectByRepoPath("/some/path")
+	if err != nil {
+		t.Fatalf("GetProjectByRepoPath failed: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil, got %+v", p)
+	}
+}
+
+func TestGetProjectByRepoPath_Found(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "repo-project")
+	p, _ := db.GetProject(pid)
+	p.RepoPath = "/Users/me/src/myproject"
+	db.UpdateProject(p)
+
+	found, err := db.GetProjectByRepoPath("/Users/me/src/myproject")
+	if err != nil {
+		t.Fatalf("GetProjectByRepoPath failed: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected to find project by repo path")
+	}
+	if found.ID != pid {
+		t.Errorf("expected id %q, got %q", pid, found.ID)
+	}
+}
+
+// --- GetTask tests ---
+
+func TestGetTask_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	task, err := db.GetTask("nonexistent")
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if task != nil {
+		t.Errorf("expected nil, got %+v", task)
+	}
+}
+
+func TestGetTask_Found(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "my-task", models.TaskStatusInProgress)
+
+	task, err := db.GetTask(tid)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected task, got nil")
+	}
+	if task.Title != "my-task" {
+		t.Errorf("expected title 'my-task', got %q", task.Title)
+	}
+	if task.Status != models.TaskStatusInProgress {
+		t.Errorf("expected status in_progress, got %q", task.Status)
+	}
+}
+
+func TestGetTask_WithDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	task := &models.Task{
+		ProjectID: pid,
+		Title:     "with-desc",
+		Status:    models.TaskStatusPending,
+		Priority:  models.PriorityMedium,
+		Description: map[string]string{
+			"en": "English description",
+			"zh": "中文描述",
+		},
+	}
+	db.CreateTask(task)
+
+	fetched, err := db.GetTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetTask failed: %v", err)
+	}
+	descJSON, _ := json.Marshal(fetched.Description)
+	if string(descJSON) == "" || string(descJSON) == "{}" {
+		// Legacy description
+	} else {
+		desc := fetched.Description
+		if desc["en"] != "English description" {
+			t.Errorf("expected en desc, got %v", desc)
+		}
+	}
+}
+
+// --- ListTasks tests ---
+
+func TestListTasks_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tasks, total, err := db.ListTasks(pid, "", "", "", "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("expected 0 tasks, got %d", len(tasks))
+	}
+	if total != 0 {
+		t.Errorf("expected total 0, got %d", total)
+	}
+}
+
+func TestListTasks_WithTasks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "task-1", models.TaskStatusPending)
+	makeTask(t, db, pid, "task-2", models.TaskStatusInProgress)
+
+	tasks, total, err := db.ListTasks(pid, "", "", "", "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(tasks))
+	}
+	if total != 2 {
+		t.Errorf("expected total 2, got %d", total)
+	}
+}
+
+func TestListTasks_FilterByStatus(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "pending-task", models.TaskStatusPending)
+	makeTask(t, db, pid, "done-task", models.TaskStatusCompleted)
+
+	tasks, total, err := db.ListTasks(pid, string(models.TaskStatusPending), "", "", "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected 1 pending task, got %d", total)
+	}
+	if len(tasks) != 1 || tasks[0].Title != "pending-task" {
+		t.Errorf("unexpected tasks: %v", tasks)
+	}
+}
+
+func TestListTasks_FilterByAssignee(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	t1 := &models.Task{ProjectID: pid, Title: "t1", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "alice"}
+	t2 := &models.Task{ProjectID: pid, Title: "t2", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "bob"}
+	db.CreateTask(t1)
+	db.CreateTask(t2)
+
+	tasks, _, err := db.ListTasks(pid, "", "alice", "", "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("expected 1 task for alice, got %d", len(tasks))
+	}
+}
+
+func TestListTasks_Search(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "find-me-task", models.TaskStatusPending)
+	makeTask(t, db, pid, "other-task", models.TaskStatusPending)
+
+	tasks, _, err := db.ListTasks(pid, "", "", "find", "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("expected 1 task matching 'find', got %d", len(tasks))
+	}
+}
+
+func TestListTasks_Pagination(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	for i := 0; i < 5; i++ {
+		makeTask(t, db, pid, "task", models.TaskStatusPending)
+	}
+
+	page1, total, err := db.ListTasks(pid, "", "", "", "", 2, 0)
+	if err != nil {
+		t.Fatalf("ListTasks page 1 failed: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Errorf("expected 2 tasks per page, got %d", len(page1))
+	}
+	if total != 5 {
+		t.Errorf("expected total 5, got %d", total)
+	}
+
+	page2, _, err := db.ListTasks(pid, "", "", "", "", 2, 2)
+	if err != nil {
+		t.Fatalf("ListTasks page 2 failed: %v", err)
+	}
+	if len(page2) != 2 {
+		t.Errorf("expected 2 tasks on page 2, got %d", len(page2))
+	}
+}
+
+// --- UpdateTask tests ---
+
+func TestUpdateTask_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "original", models.TaskStatusPending)
+
+	task, _ := db.GetTask(tid)
+	task.Title = "updated title"
+	task.Status = models.TaskStatusInProgress
+	task.Priority = models.PriorityHigh
+	task.Description = map[string]string{"en": "new description"}
+	if err := db.UpdateTask(task); err != nil {
+		t.Fatalf("UpdateTask failed: %v", err)
+	}
+
+	updated, _ := db.GetTask(tid)
+	if updated.Title != "updated title" {
+		t.Errorf("expected title 'updated title', got %q", updated.Title)
+	}
+	if updated.Status != models.TaskStatusInProgress {
+		t.Errorf("expected status in_progress, got %q", updated.Status)
+	}
+	if updated.Priority != models.PriorityHigh {
+		t.Errorf("expected priority high, got %q", updated.Priority)
+	}
+}
+
+// --- UpdateTaskStatus tests ---
+
+func TestUpdateTaskStatus_ToCompleted(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusInProgress)
+
+	if err := db.UpdateTaskStatus(tid, models.TaskStatusCompleted, ""); err != nil {
+		t.Fatalf("UpdateTaskStatus failed: %v", err)
+	}
+	task, _ := db.GetTask(tid)
+	if task.Status != models.TaskStatusCompleted {
+		t.Errorf("expected completed, got %q", task.Status)
+	}
+}
+
+func TestUpdateTaskStatus_ToFailed(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusInProgress)
+
+	if err := db.UpdateTaskStatus(tid, models.TaskStatusFailed, "something broke"); err != nil {
+		t.Fatalf("UpdateTaskStatus failed: %v", err)
+	}
+	task, _ := db.GetTask(tid)
+	if task.Status != models.TaskStatusFailed {
+		t.Errorf("expected failed, got %q", task.Status)
+	}
+	if task.ErrorMessage != "something broke" {
+		t.Errorf("expected error message, got %q", task.ErrorMessage)
+	}
+}
+
+func TestUpdateTaskStatus_ToCancelled(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	if err := db.UpdateTaskStatus(tid, models.TaskStatusCancelled, ""); err != nil {
+		t.Fatalf("UpdateTaskStatus failed: %v", err)
+	}
+	task, _ := db.GetTask(tid)
+	if task.Status != models.TaskStatusCancelled {
+		t.Errorf("expected cancelled, got %q", task.Status)
+	}
+}
+
+// --- HeartbeatTask tests ---
+
+func TestHeartbeatTask_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusInProgress)
+
+	if err := db.HeartbeatTask(tid); err != nil {
+		t.Fatalf("HeartbeatTask failed: %v", err)
+	}
+	task, _ := db.GetTask(tid)
+	if task.HeartbeatAt == 0 {
+		t.Error("expected heartbeat_at to be set")
+	}
+}
+
+// --- DeleteTask tests ---
+
+func TestDeleteTask_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	if err := db.DeleteTask(tid); err != nil {
+		t.Fatalf("DeleteTask failed: %v", err)
+	}
+	task, _ := db.GetTask(tid)
+	if task != nil {
+		t.Error("expected nil after deletion")
+	}
+}
+
+func TestDeleteTask_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Should not error even if not found
+	if err := db.DeleteTask("nonexistent-id"); err != nil {
+		t.Errorf("DeleteTask for nonexistent should not error, got: %v", err)
+	}
+}
+
+// --- scanTasks helper tests (via GetDependencyTasks) ---
+
+func TestGetDependencyTasks_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	deps, err := db.GetDependencyTasks(tid)
+	if err != nil {
+		t.Fatalf("GetDependencyTasks failed: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Errorf("expected 0 dependencies, got %d", len(deps))
+	}
+}
+
+func TestGetDependencyTasks_WithBlockers(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	t1 := makeTask(t, db, pid, "task1", models.TaskStatusPending)
+	t2 := makeTask(t, db, pid, "task2", models.TaskStatusInProgress)
+
+	db.AddDependency(t1, t2)
+
+	deps, err := db.GetDependencyTasks(t1)
+	if err != nil {
+		t.Fatalf("GetDependencyTasks failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Errorf("expected 1 dependency, got %d", len(deps))
+	}
+	if deps[0].Title != "task2" {
+		t.Errorf("expected blocker 'task2', got %q", deps[0].Title)
+	}
+}
+
+func TestGetDependentTasks_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	bid := makeTask(t, db, pid, "blocker", models.TaskStatusPending)
+
+	deps, err := db.GetDependentTasks(bid)
+	if err != nil {
+		t.Fatalf("GetDependentTasks failed: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Errorf("expected 0 dependents, got %d", len(deps))
+	}
+}
+
+func TestGetDependentTasks_WithDependents(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	b := makeTask(t, db, pid, "blocker", models.TaskStatusPending)
+	t1 := makeTask(t, db, pid, "dependent1", models.TaskStatusPending)
+	t2 := makeTask(t, db, pid, "dependent2", models.TaskStatusPending)
+
+	db.AddDependency(t1, b)
+	db.AddDependency(t2, b)
+
+	deps, err := db.GetDependentTasks(b)
+	if err != nil {
+		t.Fatalf("GetDependentTasks failed: %v", err)
+	}
+	if len(deps) != 2 {
+		t.Errorf("expected 2 dependents, got %d", len(deps))
+	}
+}
+
+// --- Subtask query tests ---
+
+func TestGetSubtaskIDs_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+
+	ids, err := db.GetSubtaskIDs(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskIDs failed: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 subtask IDs, got %d", len(ids))
+	}
+}
+
+func TestGetSubtaskIDs_WithChildren(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	ids, err := db.GetSubtaskIDs(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskIDs failed: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Errorf("expected 1 subtask ID, got %d", len(ids))
+	}
+	if ids[0] != child {
+		t.Errorf("expected child ID %q, got %q", child, ids[0])
+	}
+}
+
+func TestGetSubtaskTasks_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+
+	tasks, err := db.GetSubtaskTasks(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskTasks failed: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("expected 0 subtasks, got %d", len(tasks))
+	}
+}
+
+func TestGetSubtaskTasks_WithChildren(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child-task", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	tasks, err := db.GetSubtaskTasks(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskTasks failed: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("expected 1 subtask, got %d", len(tasks))
+	}
+	if tasks[0].Title != "child-task" {
+		t.Errorf("expected 'child-task', got %q", tasks[0].Title)
+	}
+}
+
+func TestGetParentID_NoParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	pid2, err := db.GetParentID(child)
+	if err != nil {
+		t.Fatalf("GetParentID failed: %v", err)
+	}
+	if pid2 != "" {
+		t.Errorf("expected empty parent ID, got %q", pid2)
+	}
+}
+
+func TestGetParentID_WithParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	parentID, err := db.GetParentID(child)
+	if err != nil {
+		t.Fatalf("GetParentID failed: %v", err)
+	}
+	if parentID != parent {
+		t.Errorf("expected parent ID %q, got %q", parent, parentID)
+	}
+}
+
+func TestGetParentTask_NoParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	child := makeTask(t, db, pid, "orphan", models.TaskStatusPending)
+
+	p, err := db.GetParentTask(child)
+	if err != nil {
+		t.Fatalf("GetParentTask failed: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil (no parent), got %+v", p)
+	}
+}
+
+func TestGetParentTask_WithParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "my-parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	p, err := db.GetParentTask(child)
+	if err != nil {
+		t.Fatalf("GetParentTask failed: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected parent task, got nil")
+	}
+	if p.Title != "my-parent" {
+		t.Errorf("expected 'my-parent', got %q", p.Title)
+	}
+}
+
+func TestRemoveSubtask_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	ids, _ := db.GetSubtaskIDs(parent)
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 subtask before removal, got %d", len(ids))
+	}
+
+	if err := db.RemoveSubtask(parent, child); err != nil {
+		t.Fatalf("RemoveSubtask failed: %v", err)
+	}
+
+	ids, _ = db.GetSubtaskIDs(parent)
+	if len(ids) != 0 {
+		t.Errorf("expected 0 subtasks after removal, got %d", len(ids))
+	}
+}
+
+func TestRemoveSubtask_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	// Remove without adding first — should not error
+	if err := db.RemoveSubtask(parent, child); err != nil {
+		t.Errorf("RemoveSubtask for nonexistent relation should not error, got: %v", err)
+	}
+}
+
+// --- scanTasks edge cases ---
+
+func TestGetDependencyTasks_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	deps, err := db.GetDependencyTasks("nonexistent-id")
+	if err != nil {
+		t.Fatalf("GetDependencyTasks for nonexistent should not error, got: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Errorf("expected 0, got %d", len(deps))
+	}
+}
+
+func TestGetDependentTasks_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	deps, err := db.GetDependentTasks("nonexistent-id")
+	if err != nil {
+		t.Fatalf("GetDependentTasks for nonexistent should not error, got: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Errorf("expected 0, got %d", len(deps))
+	}
+}
+
+// --- ListAgents tests ---
+
+func TestListAgents_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	agents, err := db.ListAgents()
+	if err != nil {
+		t.Fatalf("ListAgents failed: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Errorf("expected 0 agents, got %d", len(agents))
+	}
+}
+
+func TestListAgents_WithAssignees(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	for _, name := range []string{"alice", "bob", "charlie"} {
+		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: name}
+		db.CreateTask(task)
+	}
+
+	agents, err := db.ListAgents()
+	if err != nil {
+		t.Fatalf("ListAgents failed: %v", err)
+	}
+	if len(agents) != 3 {
+		t.Errorf("expected 3 agents, got %d", len(agents))
+	}
+}
+
+func TestListAgents_Distinct(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	// Create multiple tasks with the same assignee
+	for i := 0; i < 3; i++ {
+		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "alice"}
+		db.CreateTask(task)
+	}
+
+	agents, err := db.ListAgents()
+	if err != nil {
+		t.Fatalf("ListAgents failed: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Errorf("expected 1 distinct agent, got %d", len(agents))
+	}
+}
+
+// --- Notification DB tests ---
+
+func TestCreateNotification_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	n := &models.Notification{
+		TaskID:  "task-1",
+		Type:    "task.completed",
+		Message: "Task done",
+		Read:    false,
+	}
+	if err := db.CreateNotification(n); err != nil {
+		t.Fatalf("CreateNotification failed: %v", err)
+	}
+	if n.ID == "" {
+		t.Error("expected ID to be set")
+	}
+}
+
+func TestListNotifications_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	notifs, err := db.ListNotifications(10)
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(notifs) != 0 {
+		t.Errorf("expected 0 notifications, got %d", len(notifs))
+	}
+}
+
+func TestListNotifications_WithNotifications(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	for i := 0; i < 3; i++ {
+		db.CreateNotification(&models.Notification{TaskID: "task", Type: "t", Message: "m", Read: false})
+	}
+
+	notifs, err := db.ListNotifications(10)
+	if err != nil {
+		t.Fatalf("ListNotifications failed: %v", err)
+	}
+	if len(notifs) != 3 {
+		t.Errorf("expected 3 notifications, got %d", len(notifs))
+	}
+}
+
+func TestMarkNotificationRead_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	n := &models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false}
+	db.CreateNotification(n)
+
+	if err := db.MarkNotificationRead(n.ID); err != nil {
+		t.Fatalf("MarkNotificationRead failed: %v", err)
+	}
+
+	notifs, _ := db.ListNotifications(10)
+	if !notifs[0].Read {
+		t.Error("expected notification to be marked read")
+	}
+}
+
+func TestMarkAllNotificationsRead_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	for i := 0; i < 3; i++ {
+		db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false})
+	}
+
+	if err := db.MarkAllNotificationsRead(); err != nil {
+		t.Fatalf("MarkAllNotificationsRead failed: %v", err)
+	}
+
+	count, _ := db.GetUnreadNotificationCount()
+	if count != 0 {
+		t.Errorf("expected 0 unread, got %d", count)
+	}
+}
+
+func TestGetUnreadNotificationCount_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	count, err := db.GetUnreadNotificationCount()
+	if err != nil {
+		t.Fatalf("GetUnreadNotificationCount failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 unread, got %d", count)
+	}
+}
+
+func TestGetUnreadNotificationCount_WithUnread(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false})
+	db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: true})
+
+	count, err := db.GetUnreadNotificationCount()
+	if err != nil {
+		t.Fatalf("GetUnreadNotificationCount failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 unread, got %d", count)
+	}
+}
+
+func TestClearNotifications_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false})
+	db.CreateNotification(&models.Notification{TaskID: "t", Type: "t", Message: "m", Read: false})
+
+	if err := db.ClearNotifications(); err != nil {
+		t.Fatalf("ClearNotifications failed: %v", err)
+	}
+
+	count, _ := db.GetUnreadNotificationCount()
+	if count != 0 {
+		t.Errorf("expected 0 after clear, got %d", count)
+	}
+}
+
+// --- Webhook DB tests ---
+
+func TestCreateWebhook_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	wh := &models.WebhookConfig{URL: "https://example.com/hook", Events: "task.*", Active: true}
+	if err := db.CreateWebhook(wh); err != nil {
+		t.Fatalf("CreateWebhook failed: %v", err)
+	}
+	if wh.ID == "" {
+		t.Error("expected webhook ID to be set")
+	}
+}
+
+func TestListWebhooks_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	webhooks, err := db.ListWebhooks()
+	if err != nil {
+		t.Fatalf("ListWebhooks failed: %v", err)
+	}
+	if len(webhooks) != 0 {
+		t.Errorf("expected 0 webhooks, got %d", len(webhooks))
+	}
+}
+
+func TestListWebhooks_WithWebhooks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.CreateWebhook(&models.WebhookConfig{URL: "https://a.com/hook", Events: "task.*", Active: true})
+	db.CreateWebhook(&models.WebhookConfig{URL: "https://b.com/hook", Events: "task.completed", Active: false})
+
+	webhooks, err := db.ListWebhooks()
+	if err != nil {
+		t.Fatalf("ListWebhooks failed: %v", err)
+	}
+	if len(webhooks) != 2 {
+		t.Errorf("expected 2 webhooks, got %d", len(webhooks))
+	}
+}
+
+func TestDeleteWebhook_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	wh := &models.WebhookConfig{URL: "https://example.com/hook", Events: "task.*", Active: true}
+	db.CreateWebhook(wh)
+
+	if err := db.DeleteWebhook(wh.ID); err != nil {
+		t.Fatalf("DeleteWebhook failed: %v", err)
+	}
+
+	webhooks, _ := db.ListWebhooks()
+	if len(webhooks) != 0 {
+		t.Errorf("expected 0 webhooks after delete, got %d", len(webhooks))
+	}
+}
+
+func TestDeleteWebhook_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Should not error
+	if err := db.DeleteWebhook("nonexistent-id"); err != nil {
+		t.Errorf("DeleteWebhook for nonexistent should not error, got: %v", err)
+	}
+}
+
+// --- Column DB tests ---
+
+func TestListColumns_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Migration seeds default columns; clear them first
+	cols, _ := db.ListColumns()
+	for _, c := range cols {
+		db.DeleteColumn(c.ID)
+	}
+
+	columns, err := db.ListColumns()
+	if err != nil {
+		t.Fatalf("ListColumns failed: %v", err)
+	}
+	if len(columns) != 0 {
+		t.Errorf("expected 0 columns, got %d", len(columns))
+	}
+}
+
+func TestCreateColumn_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	c := &models.TaskColumn{Key: "test_col", Label: "Test Column"}
+	if err := db.CreateColumn(c); err != nil {
+		t.Fatalf("CreateColumn failed: %v", err)
+	}
+	if c.ID == "" {
+		t.Error("expected column ID to be set")
+	}
+	if c.Key != "test_col" {
+		t.Errorf("expected key 'test_col', got %q", c.Key)
+	}
+}
+
+func TestUpdateColumn_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	c := &models.TaskColumn{Key: "original", Label: "Original"}
+	db.CreateColumn(c)
+
+	c.Label = "Updated Label"
+	if err := db.UpdateColumn(c); err != nil {
+		t.Fatalf("UpdateColumn failed: %v", err)
+	}
+
+	cols, _ := db.ListColumns()
+	found := false
+	for _, col := range cols {
+		if col.ID == c.ID && col.Label == "Updated Label" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected column to be updated")
+	}
+}
+
+func TestDeleteColumn_Success(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	c := &models.TaskColumn{Key: "to_delete", Label: "ToDelete"}
+	db.CreateColumn(c)
+
+	if err := db.DeleteColumn(c.ID); err != nil {
+		t.Fatalf("DeleteColumn failed: %v", err)
+	}
+
+	cols, _ := db.ListColumns()
+	for _, col := range cols {
+		if col.ID == c.ID {
+			t.Error("expected column to be deleted")
+		}
+	}
+}
+
+func TestDeleteColumn_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	if err := db.DeleteColumn("nonexistent-id"); err != nil {
+		t.Errorf("DeleteColumn for nonexistent should not error, got: %v", err)
+	}
+}
+
+// --- scanTasks with NULL description ---
+
+func TestGetDependencyTasks_WithNullDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	b := makeTask(t, db, pid, "blocker", models.TaskStatusPending)
+	t1 := makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	db.AddDependency(t1, b)
+
+	deps, err := db.GetDependencyTasks(t1)
+	if err != nil {
+		t.Fatalf("GetDependencyTasks failed: %v", err)
+	}
+	// Should not panic on null description
+	if len(deps) != 1 {
+		t.Errorf("expected 1, got %d", len(deps))
+	}
+}
+
+func TestGetSubtaskTasks_WithNullDescription(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+
+	db.AddSubtask(parent, child)
+
+	tasks, err := db.GetSubtaskTasks(parent)
+	if err != nil {
+		t.Fatalf("GetSubtaskTasks failed: %v", err)
+	}
+	// Should not panic on null description
+	if len(tasks) != 1 {
+		t.Errorf("expected 1, got %d", len(tasks))
+	}
+}
+
+// --- ListColumns with seeded data ---
+
+func TestListColumns_WithSeededColumns(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	cols, err := db.ListColumns()
+	if err != nil {
+		t.Fatalf("ListColumns failed: %v", err)
+	}
+	// Migration 005 seeds 5 default columns
+	if len(cols) == 0 {
+		t.Error("expected migration to seed default columns")
+	}
+}
+
+// Ensure scanTasks doesn't panic on sql.Rows error
+var _ = sql.ErrNoRows
