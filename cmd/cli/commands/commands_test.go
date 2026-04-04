@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveConfig_EnvOverrides(t *testing.T) {
@@ -1109,5 +1110,197 @@ func TestAgentsOverview_NoAgents(t *testing.T) {
 	cmd.SetErr(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRelativeTime(t *testing.T) {
+	tests := []struct {
+		name string
+		ts   int64
+		want string
+	}{
+		{"zero", 0, "just now"},
+		{"recent", time.Now().Unix(), "just now"},
+		{"minutes", time.Now().Add(-5 * time.Minute).Unix(), "5m ago"},
+		{"hours", time.Now().Add(-3 * time.Hour).Unix(), "3h ago"},
+		{"days", time.Now().Add(-7 * 24 * time.Hour).Unix(), "7d ago"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := relativeTime(tt.ts)
+			if got != tt.want {
+				t.Errorf("relativeTime(%d) = %q, want %q", tt.ts, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAgentsOverview_WithActiveTasks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"agents":[{"name":"agent-1","active_tasks":2,"pending_tasks":1,"completed_tasks":10,"failed_tasks":1,"total_tasks":14}]}`))
+			return
+		}
+		if r.URL.Path == "/api/tasks" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"tasks":[{"assignee":"agent-1","title":"Fix bug","status":"in_progress"}]}`))
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestDepCheck_Blocked(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"can_start":false,"blockers":["other-task"],"child_titles":["child-a","child-b"],"blocked_by_sequential":true,"sequential_blocker":"first-child"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepCheckCmd()
+	cmd.SetArgs([]string{"--task-id", "task-id"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskList_EmptyTasks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"tasks":null}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskListCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskList_WithTasks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"tasks":[{"id":"t1","title":"Fix bug","status":"in_progress","priority":"high","assignee":"alice","task_mode":"parallel","source":"claude-code"}],"total":1}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskListCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveConfig_FileKey(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+	}()
+
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, ".tasks-watcher", "api.key")
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("file-key"), 0600); err != nil {
+		t.Fatalf("failed to write key file: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+	os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+	os.Unsetenv("TASKS_WATCHER_API_KEY")
+	serverURL = "http://localhost:4242"
+	apiKey = ""
+
+	url, key := resolveConfig()
+	if url != "http://localhost:4242" {
+		t.Errorf("expected default URL, got %s", url)
+	}
+	if key != "file-key" {
+		t.Errorf("expected file key, got %s", key)
+	}
+}
+
+func TestResolveConfig_BothMissing(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+	}()
+
+	// Use a temp HOME with no key file so file reading yields no key.
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+	os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+	os.Unsetenv("TASKS_WATCHER_API_KEY")
+	serverURL = ""
+	apiKey = ""
+
+	url, key := resolveConfig()
+	if url != "" {
+		t.Errorf("expected empty URL, got %s", url)
+	}
+	if key != "" {
+		t.Errorf("expected empty key, got %s", key)
 	}
 }
