@@ -139,3 +139,29 @@ func TestLoad_UsesGetDataDir(t *testing.T) {
 		t.Errorf("expected db path under %s, got %s", expected, cfg.DBPath)
 	}
 }
+
+func TestLoad_ExistingAPIKeyFile(t *testing.T) {
+	// When the API key file already exists, Load should read it instead of generating.
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "api.key")
+	existingKey := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex chars
+	if err := os.WriteFile(keyPath, []byte(existingKey), 0600); err != nil {
+		t.Fatalf("failed to write key file: %v", err)
+	}
+
+	os.Setenv("TASKS_WATCHER_DATA_DIR", tmpDir)
+	os.Unsetenv("TASKS_WATCHER_PORT")
+	os.Unsetenv("TASKS_WATCHER_DB_PATH")
+	os.Unsetenv("TASKS_WATCHER_NOTIFY")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_DATA_DIR")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.APIKey != existingKey {
+		t.Errorf("expected existing key %q, got %q", existingKey, cfg.APIKey)
+	}
+}
