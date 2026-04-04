@@ -1,6 +1,9 @@
 package models
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidTaskStatus(t *testing.T) {
 	tests := []struct {
@@ -166,6 +169,15 @@ func TestMergeDescription(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNow_ReturnsUnixTimestamp(t *testing.T) {
+	before := time.Now().Unix()
+	got := Now()
+	after := time.Now().Unix()
+	if got < before || got > after {
+		t.Errorf("Now() = %d, want between %d and %d", got, before, after)
 	}
 }
 

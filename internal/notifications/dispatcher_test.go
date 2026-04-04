@@ -346,6 +346,54 @@ func TestMatchesEvent(t *testing.T) {
 	}
 }
 
+func TestSendEmail_MissingSMTPHostDoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_username":  "user@example.com",
+			"to_addresses":    []interface{}{"a@x.com"},
+		},
+	})
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "test")
+}
+
+func TestSendEmail_MissingSMTPUsernameDoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_host":     "smtp.example.com",
+			"to_addresses":  []interface{}{"a@x.com"},
+		},
+	})
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "test")
+}
+
+func TestSendEmail_MissingToAddressesDoesNotPanic(t *testing.T) {
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+	database.UpsertNotificationConfig(&models.NotificationConfig{
+		Type:    "email",
+		Enabled: true,
+		Config: map[string]interface{}{
+			"smtp_host":     "smtp.example.com",
+			"smtp_username":  "user@example.com",
+		},
+	})
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendEmail(task, "test")
+}
+
 func TestParseEmailConfig(t *testing.T) {
 	cases := []struct {
 		name   string
