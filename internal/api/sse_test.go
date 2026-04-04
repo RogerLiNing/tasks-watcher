@@ -64,7 +64,6 @@ func TestSSEHandler_ServeHTTP_BearerToken_Correct(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	// Should set SSE headers and return OK (flusher path)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
 	}
@@ -91,12 +90,10 @@ func TestSSEHandler_ServeHTTP_ApiKeyQueryParam_Correct(t *testing.T) {
 
 func TestSSEHandler_Broadcast_DoesNotPanic(t *testing.T) {
 	handler := NewSSEHandler("key")
-	// Broadcasting should not panic even with no clients
 	handler.Broadcast(models.SSEEvent{Type: "task.created", Payload: nil})
 }
 
 func TestBroadcastTaskEvent_NilSSE(t *testing.T) {
-	// Should not panic when SSE is nil
 	BroadcastTaskEvent(nil, "task.created", nil)
 }
 
@@ -109,7 +106,6 @@ func TestSSEHandler_HandleSSE(t *testing.T) {
 	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// HandleSSE is a thin wrapper around ServeHTTP
 	handler.HandleSSE(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
@@ -120,16 +116,13 @@ func TestSSEHandler_HandleSSE(t *testing.T) {
 func TestSSEHandler_Broadcast_DropsSlowConsumer(t *testing.T) {
 	handler := NewSSEHandler("test-key")
 
-	// Register a channel with no buffer (blocking send on broadcast)
 	blockedChan := make(chan models.SSEEvent)
 	handler.mu.Lock()
 	handler.clients[blockedChan] = struct{}{}
 	handler.mu.Unlock()
 
-	// Broadcast should not block — it drops if channel is full (buffer=0)
 	handler.Broadcast(models.SSEEvent{Type: "task.created"})
-	// If this call blocked, the test would timeout
-	// Clean up
+
 	handler.mu.Lock()
 	delete(handler.clients, blockedChan)
 	handler.mu.Unlock()
