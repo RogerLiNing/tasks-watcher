@@ -106,6 +106,73 @@ func TestSendWebhooks_SkipsInactive(t *testing.T) {
 	}
 }
 
+func TestSendWebhooks_ServerReturnsErrorStatus(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	// Server returns 500 — the goroutine should handle this without panic
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.completed",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendWebhooks("task.completed", task)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls == 0 {
+		t.Error("expected webhook to be called")
+	}
+}
+
+func TestSendWebhooks_SkipsNonMatchingEventFilter(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+	}))
+	defer server.Close()
+
+	database := setupNotifierTestDB(t)
+	defer database.Close()
+
+	// Webhook only fires on "task.failed", but we send "task.completed"
+	database.CreateWebhook(&models.WebhookConfig{
+		URL:    server.URL,
+		Events: "task.failed",
+		Active: true,
+	})
+
+	d := NewDispatcher(database, nil)
+	task := &models.Task{ID: "t", Title: "Test", Status: models.TaskStatusCompleted}
+	d.sendWebhooks("task.completed", task)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 0 {
+		t.Errorf("expected 0 calls with non-matching event filter, got %d", calls)
+	}
+}
+
 func TestSendWebhooks_MatchesEventFilter(t *testing.T) {
 	// Test that task.* wildcard matches task.completed
 	event := "task.completed"

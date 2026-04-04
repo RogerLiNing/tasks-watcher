@@ -821,6 +821,55 @@ func TestListTasks_Pagination(t *testing.T) {
 	}
 }
 
+func TestListTasks_FilterBySource(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	// Tasks created by makeTask have empty source.
+	// Filtering by a non-empty source returns 0 results.
+	tasks, total, err := db.ListTasks(pid, "", "", "", "claude-code", 50, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if total != 0 || len(tasks) != 0 {
+		t.Errorf("expected 0 tasks for source filter, got total=%d len=%d", total, len(tasks))
+	}
+}
+
+func TestListTasks_LimitClampedTo500(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	// Create a task
+	makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	// Pass limit > 500 — should be clamped to 500
+	tasks, total, err := db.ListTasks(pid, "", "", "", "", 1000, 0)
+	if err != nil {
+		t.Fatalf("ListTasks failed: %v", err)
+	}
+	if total < 1 {
+		t.Error("expected at least 1 task")
+	}
+	if len(tasks) > 500 {
+		t.Errorf("expected ≤500 tasks, got %d", len(tasks))
+	}
+}
+
+func TestListTasks_QueryError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, _, err := db.ListTasks("", "", "", "", "", 10, 0)
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
 // --- UpdateTask tests ---
 
 func TestUpdateTask_Success(t *testing.T) {
