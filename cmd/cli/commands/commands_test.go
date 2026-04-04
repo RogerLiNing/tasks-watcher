@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -566,6 +567,67 @@ func TestProjectCreate_Success(t *testing.T) {
 
 	cmd := projectCreateCmd()
 	cmd.SetArgs([]string{"--name", "my-proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestProjectCreate_WithDescriptionAndRepoPath(t *testing.T) {
+	var reqBody map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&reqBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-id","name":"my-proj"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectCreateCmd()
+	cmd.SetArgs([]string{"--name", "my-proj", "--description", "A test project", "--repo-path", "/home/user/repos/my-proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if reqBody["name"] != "my-proj" {
+		t.Errorf("expected name 'my-proj', got %v", reqBody["name"])
+	}
+	if reqBody["description"] != "A test project" {
+		t.Errorf("expected description, got %v", reqBody["description"])
+	}
+	if reqBody["repo_path"] != "/home/user/repos/my-proj" {
+		t.Errorf("expected repo_path, got %v", reqBody["repo_path"])
+	}
+}
+
+func TestProjectList_WithProjects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"projects":[{"id":"p1","name":"Alpha"},{"id":"p2","name":"Beta"}]}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := projectListCmd()
+	cmd.SetArgs([]string{})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil {
@@ -1148,6 +1210,66 @@ func TestAgentsOverview_WithActiveTasks(t *testing.T) {
 			return
 		}
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentsOverview_WithCursorAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"agents":[{"name":"cursor","active_tasks":0,"pending_tasks":1,"completed_tasks":3,"failed_tasks":0,"total_tasks":4}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentsOverview_TasksAPIError(t *testing.T) {
+	// tasks API returns error, but agents API succeeds — should still print overview
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"agents":[{"name":"claude-code","active_tasks":0,"pending_tasks":0,"completed_tasks":1,"failed_tasks":0,"total_tasks":1}]}`))
+			return
+		}
+		// tasks API fails — agents overview should still print
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 

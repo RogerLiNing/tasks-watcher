@@ -944,3 +944,107 @@ func TestClient_do_ConnectionError(t *testing.T) {
 		t.Error("expected connection error")
 	}
 }
+
+func TestNew_MissingAPIKey(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		if origURL != "" {
+			os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		} else {
+			os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		}
+		if origKey != "" {
+			os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+		} else {
+			os.Unsetenv("TASKS_WATCHER_API_KEY")
+		}
+	}()
+
+	// Use a temp HOME with no key file
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+	os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+	os.Unsetenv("TASKS_WATCHER_API_KEY")
+
+	_, err := New()
+	if err == nil {
+		t.Error("expected error for missing API key")
+	}
+}
+
+func TestNew_Success(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		if origURL != "" {
+			os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		} else {
+			os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		}
+		if origKey != "" {
+			os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+		} else {
+			os.Unsetenv("TASKS_WATCHER_API_KEY")
+		}
+	}()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", "http://localhost:4242")
+	os.Setenv("TASKS_WATCHER_API_KEY", "test-key-from-env")
+
+	c, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if c.BaseURL != "http://localhost:4242" {
+		t.Errorf("expected URL http://localhost:4242, got %s", c.BaseURL)
+	}
+	if c.APIKey != "test-key-from-env" {
+		t.Errorf("expected API key test-key-from-env, got %s", c.APIKey)
+	}
+}
+
+func TestClient_Close(t *testing.T) {
+	c := &Client{}
+	if err := c.Close(); err != nil {
+		t.Errorf("Close() returned error: %v", err)
+	}
+}
+
+func TestGetOrCreateProjectByRepo_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, `{"error":"not found"}`)
+	}))
+	defer server.Close()
+
+	c := newTestClient(server.URL)
+	_, err := c.getOrCreateProjectByRepo("/some/repo")
+	if err == nil {
+		t.Error("expected error for API 404")
+	}
+}
+
+func TestGetOrCreateProjectByRepo_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+
+	c := newTestClient(server.URL)
+	_, err := c.getOrCreateProjectByRepo("/some/repo")
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestGetOrCreateProjectByRepo_ConnectionError(t *testing.T) {
+	c := newTestClient("http://localhost:59999")
+	_, err := c.getOrCreateProjectByRepo("/some/repo")
+	if err == nil {
+		t.Error("expected connection error")
+	}
+}
