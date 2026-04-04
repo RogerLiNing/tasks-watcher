@@ -1385,6 +1385,24 @@ func TestGetParentTask_WithParent(t *testing.T) {
 	}
 }
 
+func TestGetParentTask_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetParentTask("some-id")
+	if err == nil {
+		t.Error("expected error from GetParentID, got nil")
+	}
+}
+
+func TestGetChildStatuses_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetChildStatuses("some-id")
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
 func TestRemoveSubtask_Success(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
