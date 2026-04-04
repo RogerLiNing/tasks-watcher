@@ -250,6 +250,15 @@ func TestGetDependentIDs(t *testing.T) {
 	}
 }
 
+func TestGetDependentIDs_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetDependentIDs("some-id")
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
 // --- CanStartTask tests ---
 
 func TestCanStartTask_NoBlockers(t *testing.T) {
@@ -628,6 +637,15 @@ func TestGetOrCreateProject_New(t *testing.T) {
 	}
 	if p.Name != "brand-new" {
 		t.Errorf("expected name 'brand-new', got %q", p.Name)
+	}
+}
+
+func TestGetOrCreateProject_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetOrCreateProject("any-name")
+	if err == nil {
+		t.Error("expected error from GetProjectByName, got nil")
 	}
 }
 
@@ -1247,6 +1265,15 @@ func TestGetSubtaskIDs_WithChildren(t *testing.T) {
 	}
 }
 
+func TestGetSubtaskIDs_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetSubtaskIDs("some-id")
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
 func TestGetSubtaskTasks_Empty(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -1476,6 +1503,60 @@ func TestListAgents_Distinct(t *testing.T) {
 	}
 	if len(agents) != 1 {
 		t.Errorf("expected 1 distinct agent, got %d", len(agents))
+	}
+}
+
+func TestListAgents_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ListAgents()
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
+func TestListNotifications_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ListNotifications(10)
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
+func TestListWebhooks_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ListWebhooks()
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
+func TestListNotificationConfigs_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ListNotificationConfigs()
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
+func TestListColumns_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ListColumns()
+	if err == nil {
+		t.Error("expected error from conn.Query, got nil")
+	}
+}
+
+func TestGetTask_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetTask("some-id")
+	if err == nil {
+		t.Error("expected error from conn.QueryRow, got nil")
 	}
 }
 
@@ -1920,6 +2001,15 @@ func TestGetOrCreateByRepoPath_DotSlash(t *testing.T) {
 	}
 	if p.Name != "default" {
 		t.Errorf("expected name 'default', got %q", p.Name)
+	}
+}
+
+func TestGetOrCreateByRepoPath_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.GetOrCreateByRepoPath("/some/repo/path")
+	if err == nil {
+		t.Error("expected error from GetProjectByRepoPath, got nil")
 	}
 }
 
