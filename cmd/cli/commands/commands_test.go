@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1424,5 +1425,551 @@ func TestResolveConfig_BothMissing(t *testing.T) {
 	}
 	if key != "" {
 		t.Errorf("expected empty key, got %s", key)
+	}
+}
+
+func TestTaskShow_WithFullDetails(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tasks/show-full":
+			w.Write([]byte(`{"id":"show-full","title":"My Long Task Title","status":"in_progress","priority":"high","assignee":"bob","source":"cli","task_mode":"sequential","description":"This is a very long description that exceeds two hundred characters to test the truncation logic in the taskShowCmd function which cuts off at 200 chars","error_message":"Previous attempt failed"}`))
+		case "/api/tasks/show-full/subtasks":
+			w.Write([]byte(`{"subtasks":[{"id":"c1","title":"Child 1","status":"completed","position":1},{"id":"c2","title":"Child 2","status":"pending","position":2}]}`))
+		case "/api/tasks/show-full/dependencies":
+			w.Write([]byte(`{"blockers":[{"id":"b1","title":"Blocker","status":"completed"}]}`))
+		case "/api/tasks/show-full/dependents":
+			w.Write([]byte(`{"dependents":[{"id":"d1","title":"Dependent","status":"in_progress"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskShowCmd()
+	cmd.SetArgs([]string{"show-full"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Verify all expected endpoints were called
+	expected := []string{
+		"/api/tasks/show-full",
+		"/api/tasks/show-full/subtasks",
+		"/api/tasks/show-full/dependencies",
+		"/api/tasks/show-full/dependents",
+	}
+	for _, p := range expected {
+		found := false
+		for _, called := range paths {
+			if called == p {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected server call to %s, got: %v", p, paths)
+		}
+	}
+}
+
+func TestTaskShow_WithMinimalTask(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tasks/show-min":
+			w.Write([]byte(`{"id":"show-min","title":"Min Task","status":"pending","priority":"medium"}`))
+		case "/api/tasks/show-min/subtasks":
+			w.Write([]byte(`{"subtasks":[]}`))
+		case "/api/tasks/show-min/dependencies":
+			w.Write([]byte(`{"blockers":[]}`))
+		case "/api/tasks/show-min/dependents":
+			w.Write([]byte(`{"dependents":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskShowCmd()
+	cmd.SetArgs([]string{"show-min"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 4 {
+		t.Errorf("expected 4 API calls, got %d: %v", len(paths), paths)
+	}
+}
+
+func TestTaskCreate_WithTaskMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["task_mode"] != "sequential" {
+			t.Errorf("expected task_mode=sequential, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"task-mode-123","title":"Sequential Task","status":"pending","priority":"medium"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Sequential Task", "--task-mode", "sequential", "--project", "test-proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskUpdate_WithAssigneeAndTaskMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/update-cli-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["assignee"] != "charlie" {
+			t.Errorf("expected assignee=charlie, got: %v", body)
+		}
+		if body["task_mode"] != "parallel" {
+			t.Errorf("expected task_mode=parallel, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"update-cli-123","title":"Updated","status":"pending","priority":"medium"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskUpdateCmd()
+	cmd.SetArgs([]string{"update-cli-123", "--assignee", "charlie", "--task-mode", "parallel"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSubtaskCreate_WithAllFlags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tasks/par-full/subtasks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["description"] != "a description" {
+			t.Errorf("expected description, got: %v", body)
+		}
+		if body["priority"] != "urgent" {
+			t.Errorf("expected priority=urgent, got: %v", body)
+		}
+		if body["assignee"] != "dave" {
+			t.Errorf("expected assignee=dave, got: %v", body)
+		}
+		if body["position"] != float64(2) {
+			t.Errorf("expected position=2, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"task":{"id":"full-child-123","title":"Full Child","status":"pending"}}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskCreateCmd()
+	cmd.SetArgs([]string{
+		"--task-id", "par-full",
+		"--title", "Full Child",
+		"--description", "a description",
+		"--priority", "urgent",
+		"--assignee", "dave",
+		"--position", "2",
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSubtaskList_WithSubtasks(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/tasks/par-list/subtasks" {
+			w.Write([]byte(`{"subtasks":[{"id":"c1","title":"First","status":"in_progress","position":1},{"id":"c2","title":"Second","status":"pending","position":2}]}`))
+		} else {
+			w.Write([]byte(`{"id":"par-list","title":"Parent Task"}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskListCmd()
+	cmd.SetArgs([]string{"--task-id", "par-list"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("expected 2 API calls, got %d: %v", len(paths), paths)
+	}
+}
+
+func TestSubtaskLink_WithPosition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["position"] != float64(1) {
+			t.Errorf("expected position=1, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"task":{"id":"linked-child-123","title":"Linked","status":"pending"}}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskSubtaskLinkCmd()
+	cmd.SetArgs([]string{"--task-id", "parent-link", "--add", "child-link", "--position", "1"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSubtaskReorder_InvalidPosition(t *testing.T) {
+	serverURL = "http://localhost:59999"
+	apiKey = "k"
+	cmd := taskSubtaskReorderCmd()
+	cmd.SetArgs([]string{"--task-id", "any", "--child-id", "any", "--position", "0"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for position < 1")
+	}
+}
+
+func TestDepList_WithBlockersAndDependents(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/dependencies") {
+			w.Write([]byte(`{"blockers":[{"id":"b1","title":"Blocker 1","status":"in_progress"},{"id":"b2","title":"Blocker 2","status":"pending"}]}`))
+		} else {
+			w.Write([]byte(`{"dependents":[{"id":"d1","title":"Dependent 1","status":"completed"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepListCmd()
+	cmd.SetArgs([]string{"--task-id", "dep-full"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Errorf("expected 2 API calls, got %d: %v", len(paths), paths)
+	}
+}
+
+func TestDepAdd_Success_ShowsBlockerID(t *testing.T) {
+	var reqBody map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&reqBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"blocker_id":"blocker-abc"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskDepAddCmd()
+	cmd.SetArgs([]string{"--task-id", "task-abc", "--on", "blocker-abc"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reqBody["blocker_id"] != "blocker-abc" {
+		t.Errorf("expected blocker_id=blocker-abc, got: %v", reqBody)
+	}
+}
+
+func TestTaskCreate_NoProjectFlag_TriggersGitDetection(t *testing.T) {
+	// Without --project flag, resolveProjectFromGit() is called.
+	// Create a temp non-git dir and chdir to it so detectGitRepo returns "".
+	tmpDir := t.TempDir()
+	oldCwd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Skipf("cannot chdir to temp dir: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		rawBody, _ := io.ReadAll(r.Body)
+		json.Unmarshal(rawBody, &body)
+		// project_name should not be present without --project flag
+		if _, ok := body["project_name"].(string); ok {
+			t.Errorf("expected no project_name without --project flag")
+		}
+		// priority should be "high" from --priority flag
+		if pri, ok := body["priority"].(string); !ok || pri != "high" {
+			t.Errorf("expected priority=high, got body=%s", rawBody)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"git-detect-123","title":"Git Task","status":"pending","priority":"high"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Git Task", "--priority", "high"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskCreate_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Fail Task", "--project", "proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestTaskCreate_InvalidJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Bad Task", "--project", "proj"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestTaskStart_InvalidJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskStartCmd()
+	cmd.SetArgs([]string{"task-start-123"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestTaskComplete_InvalidJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCompleteCmd()
+	cmd.SetArgs([]string{"task-complete-123"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestTaskFail_InvalidJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskFailCmd()
+	cmd.SetArgs([]string{"task-fail-123"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestTaskCancel_InvalidJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`not json`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCancelCmd()
+	cmd.SetArgs([]string{"task-cancel-123"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid JSON response")
 	}
 }
