@@ -1041,10 +1041,415 @@ func TestGetOrCreateProjectByRepo_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateProjectByRepo_ConnectionError(t *testing.T) {
-	c := newTestClient("http://localhost:59999")
+func TestClient_DepList_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.DepList(map[string]interface{}{"task_id": "task-12345678"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_TaskDelete_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, `{"error":"not found"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.TaskDelete(map[string]interface{}{"task_id": "missing-12345678"})
+	if err == nil {
+		t.Error("expected error for 404 response")
+	}
+}
+
+func TestClient_ProjectCreate_WithRepoPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["repo_path"] == "" {
+			t.Errorf("expected repo_path in body, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-repo-12345678","name":"RepoProj","description":"with repo","repo_path":"/path/to/repo"}`))
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.ProjectCreate(map[string]interface{}{
+		"name": "RepoProj", "repo_path": "/path/to/repo",
+	})
+	if err != nil {
+		t.Fatalf("ProjectCreate failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+}
+
+func TestClient_ProjectDelete_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, `{"error":"not found"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectDelete(map[string]interface{}{"project_id": "missing-12345678"})
+	if err == nil {
+		t.Error("expected error for 404 response")
+	}
+}
+
+func TestClient_SubtaskCreate_WithPosition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["position"] == nil {
+			t.Errorf("expected position in body, got: %v", body)
+		}
+		if body["position"] != float64(3) {
+			t.Errorf("expected position=3, got: %v", body["position"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"task":{"id":"child-pos-12345678","title":"child","status":"pending"}}`))
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.SubtaskCreate(map[string]interface{}{
+		"task_id": "parent-pos-12345678", "title": "child", "position": 3,
+	})
+	if err != nil {
+		t.Fatalf("SubtaskCreate failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+}
+
+func TestClient_ProjectList_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectList(map[string]interface{}{})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_ProjectList_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectList(map[string]interface{}{})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_SubtaskList_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.SubtaskList(map[string]interface{}{"task_id": "parent-12345678"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_ProjectUpdate_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectUpdate(map[string]interface{}{"project_id": "proj-12345678", "name": "Updated"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_ProjectUpdate_WithRepoPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["repo_path"] == "" {
+			t.Errorf("expected repo_path in body, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-r-12345678","name":"ProjWithRepo","repo_path":"/new/repo"}`))
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.ProjectUpdate(map[string]interface{}{
+		"project_id": "proj-r-12345678", "repo_path": "/new/repo",
+	})
+	if err != nil {
+		t.Fatalf("ProjectUpdate failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+}
+
+func TestClient_DepAdd_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"error":"bad request"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.DepAdd(map[string]interface{}{
+		"task_id": "task-12345678", "blocker_id": "blocker-12345678",
+	})
+	if err == nil {
+		t.Error("expected error for 400 response")
+	}
+}
+
+func TestClient_DepList_ServerErrorBlockers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.DepList(map[string]interface{}{"task_id": "task-12345678"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_SubtaskList_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.SubtaskList(map[string]interface{}{"task_id": "parent-12345678"})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_SubtaskReorder_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		io.WriteString(w, `{"error":"conflict"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.SubtaskReorder(map[string]interface{}{
+		"task_id": "parent-12345678", "child_id": "child-12345678", "position": 2,
+	})
+	if err == nil {
+		t.Error("expected error for 409 response")
+	}
+}
+
+func TestClient_SubtaskReorder_InvalidPosition(t *testing.T) {
+	c := &Client{}
+	_, err := c.SubtaskReorder(map[string]interface{}{
+		"task_id": "any-12345678", "child_id": "child-12345678", "position": 0,
+	})
+	if err == nil {
+		t.Error("expected error for position < 1")
+	}
+}
+
+func TestClient_TaskUpdate_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.TaskUpdate(map[string]interface{}{"task_id": "task-12345678", "title": "Updated"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_TaskUpdate_WithTaskMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["task_mode"] != "sequential" {
+			t.Errorf("expected task_mode=sequential in body, got: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"task-up-12345678","title":"Updated","status":"pending","priority":"high"}`))
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.TaskUpdate(map[string]interface{}{
+		"task_id": "task-up-12345678", "task_mode": "sequential",
+	})
+	if err != nil {
+		t.Fatalf("TaskUpdate failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+}
+
+func TestClient_TaskUpdate_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.TaskUpdate(map[string]interface{}{"task_id": "task-12345678", "title": "Updated"})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_DepList_ServerErrorDependents(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tasks/task-dep-12345678/dependencies" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"blockers":[]}`))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, `{"error":"server error"}`)
+		}
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.DepList(map[string]interface{}{"task_id": "task-dep-12345678"})
+	if err == nil {
+		t.Error("expected error for dependents server error response")
+	}
+}
+
+func TestClient_DepList_WithDependents(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/tasks/task-d-12345678/dependencies" {
+			w.Write([]byte(`{"blockers":[]}`))
+		} else {
+			w.Write([]byte(`{"dependents":[{"id":"d1-12345678","title":"Dependent 1","status":"in_progress"}]}`))
+		}
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.DepList(map[string]interface{}{"task_id": "task-d-12345678"})
+	if err != nil {
+		t.Fatalf("DepList failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+}
+
+func TestClient_SubtaskCreate_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.SubtaskCreate(map[string]interface{}{"task_id": "parent-12345678", "title": "child"})
+	if err == nil {
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_SubtaskCreate_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.SubtaskCreate(map[string]interface{}{"task_id": "parent-12345678", "title": "child"})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_ProjectCreate_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		io.WriteString(w, `{"error":"conflict"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectCreate(map[string]interface{}{"name": "Duplicate"})
+	if err == nil {
+		t.Error("expected error for 409 response")
+	}
+}
+
+func TestClient_ProjectCreate_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.ProjectCreate(map[string]interface{}{"name": "my-proj"})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_getOrCreateProjectByRepo_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"error":"server error"}`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
 	_, err := c.getOrCreateProjectByRepo("/some/repo")
 	if err == nil {
-		t.Error("expected connection error")
+		t.Error("expected error for server error response")
+	}
+}
+
+func TestClient_getOrCreateProjectByRepo_InvalidJSONOnCreate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `not valid json`)
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	_, err := c.getOrCreateProjectByRepo("/some/repo")
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_SubtaskList_WithPositions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"subtasks":[
+			{"id":"pos1-12345678","title":"First","status":"completed","position":1},
+			{"id":"pos2-12345678","title":"Second","status":"in_progress","position":2}
+		]}`))
+	}))
+	defer server.Close()
+	c := newTestClient(server.URL)
+	result, err := c.SubtaskList(map[string]interface{}{"task_id": "parent-12345678"})
+	if err != nil {
+		t.Fatalf("SubtaskList failed: %v", err)
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("expected content")
 	}
 }
