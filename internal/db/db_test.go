@@ -366,6 +366,58 @@ func TestCanStartTask_WithSubtasks(t *testing.T) {
 	}
 }
 
+func TestCanStartTask_GetBlockerIDsError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusPending)
+	db.Close()
+	_, err := db.CanStartTask(tid)
+	if err == nil {
+		t.Error("expected error from GetBlockerIDs, got nil")
+	}
+}
+
+func TestCanStartTask_GetSubtaskIDsError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	tid := makeTask(t, db, pid, "task", models.TaskStatusPending)
+	db.Close()
+	_, err := db.CanStartTask(tid)
+	if err == nil {
+		t.Error("expected error from GetSubtaskIDs, got nil")
+	}
+}
+
+func TestCanStartTask_GetPrevSequentialSiblingTitleError(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+	db.Close()
+	_, err := db.CanStartTask(child)
+	if err == nil {
+		t.Error("expected error from GetPrevSequentialSiblingTitle, got nil")
+	}
+}
+
+func TestAddDependency_CheckCircularDependencyError(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	t1 := makeTask(t, db, pid, "t1", models.TaskStatusPending)
+	t2 := makeTask(t, db, pid, "t2", models.TaskStatusPending)
+	t3 := makeTask(t, db, pid, "t3", models.TaskStatusPending)
+	db.AddDependency(t1, t2)
+	db.AddDependency(t2, t3)
+	db.Close()
+	_, err := db.AddDependency(t3, t1)
+	if err == nil {
+		t.Error("expected error from checkCircularDependency, got nil")
+	}
+}
+
 // --- GetChildStatuses tests ---
 
 func TestGetChildStatuses(t *testing.T) {
@@ -1114,6 +1166,44 @@ func TestAddSubtask_AlreadyHasParent(t *testing.T) {
 	_, err := db.AddSubtask(p2, child)
 	if err == nil {
 		t.Error("expected error for child already having a parent")
+	}
+}
+
+func TestAddSubtask_GetParentError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.Close()
+	_, err := db.AddSubtask("some-parent-id", child)
+	if err == nil {
+		t.Error("expected error from GetTask(parent), got nil")
+	}
+}
+
+func TestAddSubtask_GetChildError(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.Close()
+	_, err := db.AddSubtask(parent, child)
+	if err == nil {
+		t.Error("expected error from GetTask(child), got nil")
+	}
+}
+
+func TestAddSubtask_GetParentIDError(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+	db.Close()
+	_, err := db.AddSubtask(parent, child)
+	if err == nil {
+		t.Error("expected error from GetParentID, got nil")
 	}
 }
 
