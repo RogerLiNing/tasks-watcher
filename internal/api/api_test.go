@@ -1084,6 +1084,20 @@ func TestPropagateToParent_AlreadyTerminal_NoPropagation(t *testing.T) {
 	}
 }
 
+func TestPropagateToParent_NoStatusChange(t *testing.T) {
+	// Parallel parent is in_progress; child also starts in_progress → parent status unchanged.
+	router, _ := newTestTaskSubtaskRouter(t)
+	parent := createTaskViaRouter(t, router, "Parallel Parent")
+	child := createTaskViaRouter(t, router, "Child Same Status")
+	addSubtaskViaRouter(t, router, parent.ID, child.ID)
+	// Parent is already in_progress; start child (also in_progress) → no change.
+	_ = updateTaskStatusViaRouter(t, router, child.ID, "in_progress")
+	parentAfter := getTaskViaRouter(t, router, parent.ID)
+	if parentAfter.Status != models.TaskStatusInProgress {
+		t.Errorf("parent status: got %q, want in_progress (no change)", parentAfter.Status)
+	}
+}
+
 func TestAuthMiddleware_MissingAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
@@ -3174,6 +3188,25 @@ func TestSubtaskHandler_AddSubtask_DBError(t *testing.T) {
 	}
 }
 
+func TestSubtaskHandler_AddSubtask_CreateNew_DBError(t *testing.T) {
+	// Create a parent task, then close DB so GetTask fails when AddSubtask tries to use it.
+	database := setupTaskTestDB(t)
+	handler := NewSubtaskHandler(database, nil)
+	parent := createTaskViaAPI(t, database, "parent-for-db-error")
+	database.Close()
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	body := newJSONBody(map[string]string{"title": "new child"})
+	req := httptest.NewRequest("POST", "/tasks/"+parent["id"].(string)+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestSubtaskHandler_RemoveSubtask_DBError(t *testing.T) {
 	database := setupTaskTestDB(t)
 	handler := NewSubtaskHandler(database, nil)
@@ -3577,6 +3610,21 @@ func TestTaskHandler_UpdateStatus_InvalidTransition(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for invalid transition, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_UpdateStatus_InvalidJSON(t *testing.T) {
+	router, database := newTestTaskRouter(t)
+	task := createTaskViaAPI(t, database, "invalid-json")
+	tid := task["id"].(string)
+
+	req := httptest.NewRequest("PATCH", "/tasks/"+tid+"/status",
+		bytes.NewBufferString("not valid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
