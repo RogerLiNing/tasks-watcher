@@ -233,13 +233,19 @@ func (db *DB) CanStartTask(taskID string) (*models.CanStartResult, error) {
 // terminal state. Returns "" if no sibling is blocking.
 func (db *DB) GetPrevSequentialSiblingTitle(childID string) (string, error) {
 	parentID, err := db.GetParentID(childID)
-	if err != nil || parentID == "" {
+	if err != nil {
+		return "", err
+	}
+	if parentID == "" {
 		return "", nil // not a subtask
 	}
 
 	// Check parent's task_mode
 	parent, err := db.GetTask(parentID)
-	if err != nil || parent == nil {
+	if err != nil {
+		return "", err
+	}
+	if parent == nil {
 		return "", nil
 	}
 	if parent.TaskMode != models.TaskModeSequential {

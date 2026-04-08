@@ -2456,6 +2456,35 @@ func TestGetPrevSequentialSiblingTitle_PrevNotTerminal(t *testing.T) {
 	}
 }
 
+func TestGetPrevSequentialSiblingTitle_GetParentIDError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+	db.Close()
+
+	_, err := db.GetPrevSequentialSiblingTitle(child)
+	if err == nil {
+		t.Error("expected error from GetParentID when DB is closed, got nil")
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_GetParentError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	child := makeTask(t, db, pid, "child", models.TaskStatusPending)
+	db.AddSubtask(parent, child)
+	// Close DB AFTER AddSubtask so GetParentID succeeds but GetTask(parent) fails
+	db.Close()
+
+	_, err := db.GetPrevSequentialSiblingTitle(child)
+	if err == nil {
+		t.Error("expected error from GetTask when DB is closed, got nil")
+	}
+}
+
 func TestGetSubtaskIDAtPosition_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
