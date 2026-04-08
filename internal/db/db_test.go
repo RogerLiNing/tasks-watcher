@@ -356,6 +356,39 @@ func TestCanStartTask_NotBlockedByFailed(t *testing.T) {
 	}
 }
 
+func TestCanStartTask_BlockedBySequentialSubtask(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	// Create a sequential parent
+	parent := makeTask(t, db, pid, "parent", models.TaskStatusPending)
+	p, _ := db.GetTask(parent)
+	p.TaskMode = models.TaskModeSequential
+	db.UpdateTask(p)
+
+	// Create two children in sequential order
+	c1 := makeTask(t, db, pid, "child-1", models.TaskStatusPending)
+	c2 := makeTask(t, db, pid, "child-2", models.TaskStatusPending)
+	db.AddSubtask(parent, c1)
+	db.AddSubtask(parent, c2)
+
+	// child-2 should be blocked because child-1 is not terminal
+	result, err := db.CanStartTask(c2)
+	if err != nil {
+		t.Fatalf("CanStartTask failed: %v", err)
+	}
+	if result.CanStart {
+		t.Error("expected CanStart=false for sequential subtask when prev sibling is pending")
+	}
+	if !result.BlockedBySequential {
+		t.Error("expected BlockedBySequential=true")
+	}
+	if result.SequentialBlocker != "child-1" {
+		t.Errorf("expected SequentialBlocker='child-1', got %q", result.SequentialBlocker)
+	}
+}
+
 func TestCanStartTask_WithSubtasks(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
