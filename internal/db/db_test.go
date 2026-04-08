@@ -2549,6 +2549,37 @@ func TestGetPrevSequentialSiblingTitle_GetParentError(t *testing.T) {
 	}
 }
 
+func TestGetPrevSequentialSiblingTitle_PrevIDEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium, TaskMode: models.TaskModeSequential}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	db.AddSubtask(parent.ID, child.ID)
+
+	// Manually insert a subtask row at position 0 with an empty child_id.
+	// This triggers the prevID == "" path in GetPrevSequentialSiblingTitle.
+	_, err := db.conn.Exec(
+		`INSERT INTO task_subtasks (id, parent_id, child_id, position, created_at) VALUES (?, ?, ?, ?, ?)`,
+		"stub-empty-child", parent.ID, "", 0, "2024-01-01T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("failed to insert stub row: %v", err)
+	}
+
+	title, err := db.GetPrevSequentialSiblingTitle(child.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if title != "" {
+		t.Errorf("expected empty when prevID is empty, got %q", title)
+	}
+}
+
 func TestGetSubtaskIDAtPosition_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

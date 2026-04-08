@@ -2569,6 +2569,31 @@ func TestAgentHandler_Overview_WithTasks(t *testing.T) {
 	}
 }
 
+func TestAgentHandler_Overview_WithNoAgentTasks(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAgentHandler(database)
+	p := &models.Project{Name: "proj"}
+	database.CreateProject(p)
+	// Tasks with no assignee should set noAgent=true
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "unassigned-1", Status: models.TaskStatusPending, Priority: models.PriorityMedium})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "unassigned-2", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignee: "agent-a"})
+
+	router := mux.NewRouter()
+	handler.Register(router)
+	req := httptest.NewRequest("GET", "/agents/overview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["no_agent"] != true {
+		t.Errorf("expected no_agent=true, got %v", resp["no_agent"])
+	}
+	agents := resp["agents"].([]interface{})
+	if len(agents) != 1 {
+		t.Errorf("expected 1 agent (agent-a only), got %d", len(agents))
+	}
+}
+
 // --- WebhookHandler tests ---
 
 func newTestWebhookRouter(t *testing.T) *mux.Router {
@@ -3416,6 +3441,30 @@ func TestProjectHandler_Create_WithRepoPath(t *testing.T) {
 	}
 	if proj.RepoPath != "/Users/test/repo" {
 		t.Errorf("expected repo_path '/Users/test/repo', got %q", proj.RepoPath)
+	}
+}
+
+func TestProjectHandler_Create_WithRepoPath_UpdateError(t *testing.T) {
+	// Create project via GetOrCreateProject while DB is open, then close it.
+	// When Create is called with repo_path, UpdateProject will be invoked and fail.
+	database := setupTaskTestDB(t)
+	// Pre-create project so GetOrCreateProject finds it (RepoPath == "")
+	database.CreateProject(&models.Project{Name: "repo-project"})
+	database.Close()
+
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	payload := map[string]string{"name": "repo-project", "repo_path": "/Users/test/repo"}
+	body := newJSONBody(payload)
+	req := httptest.NewRequest("POST", "/projects", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when UpdateProject fails, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
