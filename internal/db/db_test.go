@@ -2650,6 +2650,58 @@ func TestGetNotificationConfig_ClosedDB(t *testing.T) {
 	}
 }
 
+func TestListTasks_LimitZero(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	// limit=0 should be treated as default (100)
+	tasks, total, err := db.ListTasks(pid, "", "", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("ListTasks(limit=0) failed: %v", err)
+	}
+	if total < 1 {
+		t.Error("expected at least 1 task")
+	}
+	if len(tasks) < 1 {
+		t.Error("expected at least 1 task in result")
+	}
+}
+
+func TestListTasks_LimitNegative(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "task", models.TaskStatusPending)
+
+	// Negative limit should also default to 100
+	tasks, total, err := db.ListTasks(pid, "", "", "", "", -5, 0)
+	if err != nil {
+		t.Fatalf("ListTasks(limit=-5) failed: %v", err)
+	}
+	if total < 1 {
+		t.Error("expected at least 1 task")
+	}
+	if len(tasks) < 1 {
+		t.Error("expected at least 1 task in result")
+	}
+}
+
+func TestGetOrCreateByRepoPath_GetProjectByNameError(t *testing.T) {
+	db := setupTestDB(t)
+	// GetProjectByRepoPath succeeds (no project with this path → returns nil, nil)
+	// Then close DB so GetProjectByName fails
+	db.Close()
+
+	_, err := db.GetOrCreateByRepoPath("/tmp/some-path")
+	if err == nil {
+		t.Error("expected error from GetProjectByName when DB is closed")
+	}
+}
+
 func TestListNotificationConfigs_ClosedDB(t *testing.T) {
 	db := setupTestDB(t)
 	db.Close()

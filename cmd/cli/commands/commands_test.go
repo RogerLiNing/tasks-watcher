@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1289,6 +1290,183 @@ func TestAgentsOverview_TasksAPIError(t *testing.T) {
 	cmd.SetErr(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentsOverview_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error when agents API fails")
+	}
+}
+
+func TestAgentsOverview_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`not json{`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error when agents API returns invalid JSON")
+	}
+}
+
+func TestAgentsOverview_WithManualAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Write([]byte(`{"agents":[{"name":"manual","active_tasks":0,"pending_tasks":1,"completed_tasks":2,"failed_tasks":0,"total_tasks":3}]}`))
+			return
+		}
+		if r.URL.Path == "/api/tasks" {
+			w.Write([]byte(`{"tasks":[]}`))
+			return
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentsOverview_LongTaskTitle(t *testing.T) {
+	// Title > 45 chars should be truncated to 42 + "..."
+	longTitle := strings.Repeat("A", 50)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/agents/overview" {
+			w.Write([]byte(`{"agents":[{"name":"claude-code","active_tasks":1,"pending_tasks":0,"completed_tasks":0,"failed_tasks":0,"total_tasks":1}]}`))
+			return
+		}
+		if r.URL.Path == "/api/tasks" {
+			w.Write([]byte(fmt.Sprintf(`{"tasks":[{"assignee":"claude-code","title":%q,"status":"in_progress","updated_at":1700000000}]}`, longTitle)))
+			return
+		}
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	// Capture stdout to verify truncation output
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+
+	cmd := agentsOverviewCmd()
+	cmd.SetArgs([]string{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	err := cmd.Execute()
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var output string
+	buf := make([]byte, 4096)
+	for {
+		n, _ := r.Read(buf)
+		if n == 0 {
+			break
+		}
+		output += string(buf[:n])
+	}
+	r.Close()
+
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	// Title > 45 chars → truncated to 42 + "..." (50 A's should not appear intact)
+	if strings.Contains(output, strings.Repeat("A", 50)) {
+		t.Error("expected long title to be truncated")
+	}
+}
+
+func TestDetectGitRepo_InGitDirectory(t *testing.T) {
+	// Create a temp directory that IS a git repo
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Skipf("cannot create .git dir: %v", err)
+	}
+
+	oldCwd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Skipf("cannot chdir to temp dir: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+
+	// detectGitRepo should find the .git directory and return the absolute path
+	result := detectGitRepo()
+	if result == "" {
+		t.Error("expected detectGitRepo to find .git directory")
+	}
+	// The result should be the temp directory (absolute path)
+	if !strings.HasPrefix(result, "/") {
+		t.Errorf("expected absolute path, got %q", result)
+	}
+}
+
+func TestDetectGitRepo_NonGitDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	oldCwd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Skipf("cannot chdir to temp dir: %v", err)
+	}
+	defer os.Chdir(oldCwd)
+
+	result := detectGitRepo()
+	if result != "" {
+		t.Errorf("expected empty result for non-git directory, got %q", result)
 	}
 }
 
