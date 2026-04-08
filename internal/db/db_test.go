@@ -2197,6 +2197,37 @@ func TestExportAll_WithData(t *testing.T) {
 	}
 }
 
+func TestExportAll_ListProjectsError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+	_, err := db.ExportAll()
+	if err == nil {
+		t.Error("expected error from ListProjects when DB is closed")
+	}
+}
+
+func TestExportAll_ListNotificationsError(t *testing.T) {
+	db := setupTestDB(t)
+	pid := makeProject(t, db, "proj")
+	makeTask(t, db, pid, "t", models.TaskStatusPending)
+	db.Close()
+	_, err := db.ExportAll()
+	if err == nil {
+		t.Error("expected error from ListNotifications when DB is closed")
+	}
+}
+
+func TestExportAll_ListTasksError(t *testing.T) {
+	db := setupTestDB(t)
+	// ListProjects succeeds (no projects needed)
+	// ListTasks fails when DB is closed
+	db.Close()
+	_, err := db.ExportAll()
+	if err == nil {
+		t.Error("expected error from ListTasks when DB is closed")
+	}
+}
+
 // --- Subtask position tests ---
 
 func TestGetSubtaskPosition_Basic(t *testing.T) {
