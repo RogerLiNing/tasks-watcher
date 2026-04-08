@@ -51,3 +51,4 @@ nohup.out
 # Temp
 *.tmp
 *.temp
+.claude/
