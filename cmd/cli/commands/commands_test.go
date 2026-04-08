@@ -2558,3 +2558,117 @@ func TestTaskCancel_InvalidJSONResponse(t *testing.T) {
 		t.Error("expected error for invalid JSON response")
 	}
 }
+
+func TestResolveProjectFromGit_APIError(t *testing.T) {
+	// Stay in git directory so detectGitRepo returns a path.
+	// Make /api/projects/by-repo return 500, triggering the resp.StatusCode >= 400 error.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/projects/by-repo" {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"simulated"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-123","title":"Task","status":"pending"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Git Error Task"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error when resolveProjectFromGit hits API error")
+	}
+}
+
+func TestResolveProjectFromGit_InvalidJSON(t *testing.T) {
+	// Stay in git directory so detectGitRepo returns a path.
+	// Make /api/projects/by-repo return 200 with invalid JSON.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/projects/by-repo" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`not valid json`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"proj-456","title":"Task","status":"pending"}`))
+	}))
+	defer server.Close()
+
+	os.Setenv("TASKS_WATCHER_SERVER_URL", server.URL)
+	os.Setenv("TASKS_WATCHER_API_KEY", "k")
+	defer func() {
+		os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+		os.Unsetenv("TASKS_WATCHER_API_KEY")
+	}()
+	serverURL = ""
+	apiKey = ""
+
+	cmd := taskCreateCmd()
+	cmd.SetArgs([]string{"--title", "Git Invalid Task"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error when resolveProjectFromGit gets invalid JSON")
+	}
+}
+
+func TestConfigShow_RunsSuccessfully(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		if origURL != "" {
+			os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		}
+		if origKey != "" {
+			os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+		}
+	}()
+	os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+	os.Unsetenv("TASKS_WATCHER_API_KEY")
+	serverURL = ""
+	apiKey = ""
+
+	cmd := ConfigCommand()
+	cmd.SetArgs([]string{"show"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("config show failed: %v", err)
+	}
+}
+
+func TestConfigApiKey_NoKey(t *testing.T) {
+	origURL := os.Getenv("TASKS_WATCHER_SERVER_URL")
+	origKey := os.Getenv("TASKS_WATCHER_API_KEY")
+	defer func() {
+		if origURL != "" {
+			os.Setenv("TASKS_WATCHER_SERVER_URL", origURL)
+		}
+		if origKey != "" {
+			os.Setenv("TASKS_WATCHER_API_KEY", origKey)
+		}
+	}()
+	os.Unsetenv("TASKS_WATCHER_SERVER_URL")
+	os.Unsetenv("TASKS_WATCHER_API_KEY")
+	serverURL = ""
+	apiKey = ""
+
+	cmd := ConfigCommand()
+	cmd.SetArgs([]string{"api-key"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
