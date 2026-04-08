@@ -2515,3 +2515,87 @@ func TestExportAll_DBError(t *testing.T) {
 		t.Error("expected error when DB is closed")
 	}
 }
+
+func TestConn_ReturnsUnderlyingConn(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	conn := db.Conn()
+	if conn == nil {
+		t.Error("expected non-nil underlying connection")
+	}
+}
+
+func TestOpen_NonWritableDir(t *testing.T) {
+	_, err := Open("/proc/read-only/nonexistent-dir/file.db")
+	if err == nil {
+		t.Error("expected error opening DB in non-writable directory")
+	}
+}
+
+func TestGetOrCreateByRepoPath_RootPath(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// "/" as repo path should use "default" as project name
+	proj, err := db.GetOrCreateByRepoPath("/")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if proj == nil {
+		t.Fatal("expected non-nil project")
+	}
+	if proj.Name != "default" {
+		t.Errorf("expected name 'default', got %q", proj.Name)
+	}
+	if proj.RepoPath != "/" {
+		t.Errorf("expected repo_path '/', got %q", proj.RepoPath)
+	}
+}
+
+func TestGetOrCreateByRepoPath_DotPath(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// "." as repo path should use "default" as project name
+	proj, err := db.GetOrCreateByRepoPath(".")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if proj == nil {
+		t.Fatal("expected non-nil project")
+	}
+	if proj.Name != "default" {
+		t.Errorf("expected name 'default', got %q", proj.Name)
+	}
+}
+
+func TestListProjects_ClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.ListProjects()
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestGetNotificationConfig_ClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetNotificationConfig("desktop")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestListNotificationConfigs_ClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.ListNotificationConfigs()
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
