@@ -2775,3 +2775,43 @@ func TestListNotificationConfigs_ClosedDB(t *testing.T) {
 		t.Error("expected error when DB is closed")
 	}
 }
+
+func TestGetSubtaskTasks_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetSubtaskTasks("any-parent")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestGetSubtaskPositions_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetSubtaskPositions("any-parent")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestGetDependencyTasks_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetDependencyTasks("any-task")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
+
+func TestGetDependentTasks_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	db.Close()
+
+	_, err := db.GetDependentTasks("any-task")
+	if err == nil {
+		t.Error("expected error when DB is closed")
+	}
+}
