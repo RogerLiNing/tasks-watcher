@@ -1415,6 +1415,39 @@ func TestProjectHandler_Update_NotFound(t *testing.T) {
 	}
 }
 
+func TestProjectHandler_Update_InvalidJSON(t *testing.T) {
+	router, _ := newTestProjectRouter(t)
+
+	req := httptest.NewRequest("PUT", "/projects/some-id", bytes.NewBufferString(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid JSON, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestProjectHandler_Update_UpdateProjectError(t *testing.T) {
+	// Pre-create project so GetProject succeeds, then close DB so UpdateProject fails.
+	database := setupTaskTestDB(t)
+	database.CreateProject(&models.Project{Name: "proj-to-update"})
+	database.Close()
+
+	sse := NewSSEHandler("test")
+	handler := NewProjectHandler(database, sse)
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	body := newJSONBody(map[string]string{"name": "updated-name"})
+	req := httptest.NewRequest("PUT", "/projects/proj-to-update", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when UpdateProject fails, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestProjectHandler_Delete_Success(t *testing.T) {
 	router, _ := newTestProjectRouter(t)
 
@@ -1951,6 +1984,52 @@ func TestSubtaskHandler_AddSubtask_InvalidJSON(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_ParentNotFound(t *testing.T) {
+	router, _ := newTestSubtaskRouter(t)
+
+	// Use a non-existent parent ID — GetTask returns (nil, nil)
+	body := newJSONBody(map[string]string{"title": "new-child"})
+	req := httptest.NewRequest("POST", "/tasks/nonexistent-parent/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for nonexistent parent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubtaskHandler_AddSubtask_AlreadyHasParent(t *testing.T) {
+	router, database := newTestSubtaskRouter(t)
+
+	// Create grandparent, parent, child tasks
+	grandparent := createTaskViaAPI(t, database, "grandparent")
+	gpid := grandparent["id"].(string)
+	parent := createTaskViaAPI(t, database, "parent")
+	pid := parent["id"].(string)
+	child := createTaskViaAPI(t, database, "child")
+	cid := child["id"].(string)
+
+	// Add child as subtask of parent (via API)
+	body := newJSONBody(map[string]interface{}{"child_id": cid})
+	req := httptest.NewRequest("POST", "/tasks/"+pid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup failed: could not add child to parent, got %d", w.Code)
+	}
+
+	// Try to add child to grandparent — should fail because child already has a parent
+	body = newJSONBody(map[string]interface{}{"child_id": cid})
+	req = httptest.NewRequest("POST", "/tasks/"+gpid+"/subtasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when child already has parent, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
