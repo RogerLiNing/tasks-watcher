@@ -159,6 +159,13 @@
         case 'column.deleted':
           columns.update(cols => cols.filter(c => c.id !== event.payload.id));
           break;
+        case 'task.comment.added':
+        case 'task.comment.updated':
+        case 'task.comment.deleted':
+          if (selectedTask) {
+            selectedTask = { ...selectedTask };
+          }
+          break;
       }
     });
 

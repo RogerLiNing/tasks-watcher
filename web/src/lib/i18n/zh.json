@@ -86,6 +86,7 @@
     "tabDetails": "详情",
     "tabDependencies": "依赖",
     "tabSubtasks": "子任务",
+    "tabComments": "评论",
     "mode": "模式",
     "taskMode": "任务模式：",
     "sequential": "🔗 顺序执行",
@@ -200,5 +201,19 @@
   "view": {
     "kanban": "看板",
     "table": "表格"
+  },
+  "commentPanel": {
+    "title": "评论",
+    "empty": "暂无评论",
+    "placeholder": "写下你的评论...",
+    "add": "发布",
+    "saving": "发布中...",
+    "delete": "删除",
+    "edit": "编辑",
+    "cancel": "取消",
+    "deleteConfirm": "确定删除这条评论？",
+    "editPlaceholder": "编辑你的评论...",
+    "authorLabel": "你的名字",
+    "authorPlaceholder": "你的名字（如 alice, bob）"
   }
 }

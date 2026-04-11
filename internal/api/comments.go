@@ -1,0 +1,146 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/rogerrlee/tasks-watcher/internal/db"
+	"github.com/rogerrlee/tasks-watcher/internal/models"
+)
+
+// CommentHandler handles task comment endpoints.
+type CommentHandler struct {
+	db  *db.DB
+	sse *SSEHandler
+}
+
+// NewCommentHandler creates a new CommentHandler.
+func NewCommentHandler(database *db.DB, sse *SSEHandler) *CommentHandler {
+	return &CommentHandler{db: database, sse: sse}
+}
+
+// Register registers comment routes under /tasks/{id}/comments.
+func (h *CommentHandler) Register(router *mux.Router) {
+	r := router.PathPrefix("/tasks/{id}").Subrouter()
+	r.HandleFunc("/comments", h.ListComments).Methods("GET")
+	r.HandleFunc("/comments", h.CreateComment).Methods("POST")
+	r.HandleFunc("/comments/{commentId}", h.UpdateComment).Methods("PUT")
+	r.HandleFunc("/comments/{commentId}", h.DeleteComment).Methods("DELETE")
+}
+
+type createCommentReq struct {
+	Author  string `json:"author"`
+	Content string `json:"content"`
+}
+
+type updateCommentReq struct {
+	Author  string `json:"author"`
+	Content string `json:"content"`
+}
+
+func (h *CommentHandler) ListComments(w http.ResponseWriter, r *http.Request) {
+	taskID := mux.Vars(r)["id"]
+	if taskID == "" {
+		http.Error(w, `{"error":"task_id required"}`, http.StatusBadRequest)
+		return
+	}
+
+	comments, err := h.db.ListComments(taskID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	if comments == nil {
+		comments = []models.TaskComment{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"comments": comments})
+}
+
+func (h *CommentHandler) CreateComment(w http.ResponseWriter, r *http.Request) {
+	taskID := mux.Vars(r)["id"]
+	if taskID == "" {
+		http.Error(w, `{"error":"task_id required"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req createCommentReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Content == "" {
+		http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	c := &models.TaskComment{
+		TaskID:  taskID,
+		Author:  req.Author,
+		Content: req.Content,
+	}
+	if err := h.db.CreateComment(c); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	BroadcastTaskEvent(h.sse, models.EventCommentAdded, c)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(c)
+}
+
+func (h *CommentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) {
+	commentID := mux.Vars(r)["commentId"]
+	if commentID == "" {
+		http.Error(w, `{"error":"comment_id required"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req updateCommentReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Content == "" {
+		http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	c, err := h.db.GetComment(commentID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+	if c == nil {
+		http.Error(w, `{"error":"comment not found"}`, http.StatusNotFound)
+		return
+	}
+
+	c.Author = req.Author
+	c.Content = req.Content
+	if err := h.db.UpdateComment(c); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	BroadcastTaskEvent(h.sse, models.EventCommentUpdated, c)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(c)
+}
+
+func (h *CommentHandler) DeleteComment(w http.ResponseWriter, r *http.Request) {
+	commentID := mux.Vars(r)["commentId"]
+	if commentID == "" {
+		http.Error(w, `{"error":"comment_id required"}`, http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.db.GetComment(commentID)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.db.DeleteComment(commentID); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	BroadcastTaskEvent(h.sse, models.EventCommentDeleted, map[string]string{"id": commentID, "task_id": mux.Vars(r)["id"]})
+	w.WriteHeader(http.StatusNoContent)
+}

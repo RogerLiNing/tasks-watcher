@@ -102,4 +102,10 @@ export const api = {
   // Notification configs
   listNotificationConfigs: () => request('GET', '/notifications/configs'),
   upsertNotificationConfig: (data) => request('POST', '/notifications/configs', data),
+
+  // Comments
+  getComments: (taskId) => request('GET', `/tasks/${taskId}/comments`),
+  createComment: (taskId, data) => request('POST', `/tasks/${taskId}/comments`, data),
+  updateComment: (taskId, commentId, data) => request('PUT', `/tasks/${taskId}/comments/${commentId}`, data),
+  deleteComment: (taskId, commentId) => request('DELETE', `/tasks/${taskId}/comments/${commentId}`),
 };

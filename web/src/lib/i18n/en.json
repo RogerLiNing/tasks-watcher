@@ -86,6 +86,7 @@
     "tabDetails": "Details",
     "tabDependencies": "Dependencies",
     "tabSubtasks": "Subtasks",
+    "tabComments": "Comments",
     "mode": "Mode",
     "taskMode": "Task mode:",
     "sequential": "🔗 Sequential",
@@ -200,5 +201,19 @@
   "view": {
     "kanban": "Kanban",
     "table": "Table"
+  },
+  "commentPanel": {
+    "title": "Comments",
+    "empty": "No comments yet",
+    "placeholder": "Write a comment...",
+    "add": "Post",
+    "saving": "Posting...",
+    "delete": "Delete",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "deleteConfirm": "Delete this comment?",
+    "editPlaceholder": "Edit your comment...",
+    "authorLabel": "Your name",
+    "authorPlaceholder": "Your name (e.g. alice, bob)"
   }
 }

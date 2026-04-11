@@ -3,6 +3,7 @@
   import { t, locale } from '../lib/i18n/index.js';
   import DependencyPanel from './DependencyPanel.svelte';
   import SubtaskPanel from './SubtaskPanel.svelte';
+  import CommentPanel from './CommentPanel.svelte';
 
   export let task;
   export let projects = [];
@@ -40,6 +41,7 @@
     { key: 'details', label: $t('taskModal.tabDetails') },
     { key: 'dependencies', label: $t('taskModal.tabDependencies') },
     { key: 'subtasks', label: $t('taskModal.tabSubtasks') },
+    { key: 'comments', label: $t('taskModal.tabComments') },
   ];
 
   $: statuses = [
@@ -211,6 +213,11 @@
           {task}
           on:refresh
           on:openTask={(e) => openTaskInModal(e.detail)}
+        />
+      {:else if activeTab === 'comments'}
+        <CommentPanel
+          {task}
+          on:refresh
         />
       {/if}
     </div>

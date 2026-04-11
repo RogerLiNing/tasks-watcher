@@ -62,6 +62,7 @@ func main() {
 	depHandler := api.NewDepHandler(database, sse)
 	subtaskHandler := api.NewSubtaskHandler(database, sse)
 	columnHandler := api.NewColumnHandler(database, sse)
+	commentHandler := api.NewCommentHandler(database, sse)
 
 	// Register on subrouter — handlers use paths WITHOUT /api prefix (subrouter handles it)
 	projectHandler.Register(apiRouter)
@@ -73,6 +74,7 @@ func main() {
 	depHandler.Register(apiRouter)
 	subtaskHandler.Register(apiRouter)
 	columnHandler.Register(apiRouter)
+	commentHandler.Register(apiRouter)
 
 	// Config endpoint
 	apiRouter.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
