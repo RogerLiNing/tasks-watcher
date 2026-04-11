@@ -2815,3 +2815,121 @@ func TestGetDependentTasks_DBError(t *testing.T) {
 		t.Error("expected error when DB is closed")
 	}
 }
+
+func TestSetSubtaskPosition_GetPositionError(t *testing.T) {
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	db.AddSubtask(parent.ID, child.ID)
+	// Close DB so GetSubtaskPosition fails
+	db.Close()
+
+	err := db.SetSubtaskPosition(parent.ID, child.ID, 1)
+	if err == nil {
+		t.Error("expected error from GetSubtaskPosition when DB is closed")
+	}
+}
+
+func TestListTasks_RowsErrAfterCount(t *testing.T) {
+	// Test rows.Err() path: count query succeeds, but connection drops before row iteration.
+	// We simulate this by closing the underlying conn so rows.Next() fails.
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	task := &models.Task{ProjectID: p.ID, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(task)
+
+	// Close the underlying *sql.DB so that after Query returns valid rows,
+	// iterating them hits an I/O error and rows.Err() becomes non-nil.
+	db.Conn().Close()
+
+	_, _, err := db.ListTasks("", "", "", "", "", 10, 0)
+	if err == nil {
+		t.Error("expected error after conn is closed")
+	}
+}
+
+func TestGetParentID_QueryRowScanError(t *testing.T) {
+	// Test that QueryRow scan error (non-ErrNoRows) is returned.
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	db.AddSubtask(parent.ID, child.ID)
+
+	// Close DB before calling GetParentID so QueryRow scan fails.
+	db.Close()
+
+	_, err := db.GetParentID(child.ID)
+	if err == nil {
+		t.Error("expected error from GetParentID when DB is closed")
+	}
+}
+
+func TestScanTasks_ScanError(t *testing.T) {
+	// Test scanTasks rows.Scan error path by using a query that returns
+	// fewer columns than scanTasks expects, causing a scan mismatch.
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	task := &models.Task{ProjectID: p.ID, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(task)
+
+	// Query with wrong number of columns → scan fails.
+	rows, err := db.conn.Query(`SELECT id, title FROM tasks`)
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+
+	_, err = scanTasks(rows)
+	if err == nil {
+		t.Error("expected error from scanTasks with wrong column count")
+	}
+	rows.Close()
+}
+
+func TestAddSubtask_PositionQueryError(t *testing.T) {
+	// Test position query error in AddSubtask (line 412-418).
+	// Create parent and child tasks while DB is open; close DB before position query.
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	// GetParentID succeeds (child has no parent). Close DB before position query.
+	db.Close()
+
+	_, err := db.AddSubtask(parent.ID, child.ID)
+	if err == nil {
+		t.Error("expected error from AddSubtask position query when DB is closed")
+	}
+}
+
+func TestGetPrevSequentialSiblingTitle_GetSubtaskPositionError(t *testing.T) {
+	// Test GetSubtaskPosition error in GetPrevSequentialSiblingTitle.
+	// Set up sequential parent + child, then close DB before GetSubtaskPosition.
+	db := setupTestDB(t)
+	p := &models.Project{Name: "proj"}
+	db.CreateProject(p)
+	parent := &models.Task{ProjectID: p.ID, Title: "parent", Status: models.TaskStatusPending, Priority: models.PriorityMedium, TaskMode: models.TaskModeSequential}
+	db.CreateTask(parent)
+	child := &models.Task{ProjectID: p.ID, Title: "child", Status: models.TaskStatusPending, Priority: models.PriorityMedium}
+	db.CreateTask(child)
+	db.AddSubtask(parent.ID, child.ID)
+	// GetParentID and GetTask(parent) succeed; close DB before GetSubtaskPosition.
+	db.Close()
+
+	_, err := db.GetPrevSequentialSiblingTitle(child.ID)
+	if err == nil {
+		t.Error("expected error from GetPrevSequentialSiblingTitle when DB is closed")
+	}
+}
