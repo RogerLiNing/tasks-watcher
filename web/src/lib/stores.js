@@ -9,6 +9,7 @@ export const selectedSource = writable(''); // filter by source: '', 'claude-cod
 export const showNotifications = writable(false);
 export const sseConnected = writable(false);
 export const columns = writable([]);
+export const viewMode = writable('kanban'); // 'kanban' | 'table'
 
 // Derived: filtered tasks (by project and source)
 export const filteredTasks = derived([tasks, selectedProjectId, selectedSource], ([$tasks, $pid, $src]) => {

@@ -181,5 +181,24 @@
     "tabNotifications": "通知",
     "tabColumns": "看板列",
     "closeSettings": "关闭设置"
+  },
+  "table": {
+    "title": "标题",
+    "status": "状态",
+    "priority": "优先级",
+    "assignee": "负责人",
+    "source": "来源",
+    "project": "项目",
+    "created": "创建时间",
+    "updated": "更新时间",
+    "empty": "暂无任务",
+    "priorityUrgent": "紧急",
+    "priorityHigh": "高",
+    "priorityMedium": "中",
+    "priorityLow": "低"
+  },
+  "view": {
+    "kanban": "看板",
+    "table": "表格"
   }
 }

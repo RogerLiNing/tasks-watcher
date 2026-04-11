@@ -181,5 +181,24 @@
     "tabNotifications": "Notifications",
     "tabColumns": "Kanban Columns",
     "closeSettings": "Close settings"
+  },
+  "table": {
+    "title": "Title",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "source": "Source",
+    "project": "Project",
+    "created": "Created",
+    "updated": "Updated",
+    "empty": "No tasks found",
+    "priorityUrgent": "Urgent",
+    "priorityHigh": "High",
+    "priorityMedium": "Medium",
+    "priorityLow": "Low"
+  },
+  "view": {
+    "kanban": "Kanban",
+    "table": "Table"
   }
 }

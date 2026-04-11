@@ -7,13 +7,14 @@
     selectedProjectId, selectedSource, showNotifications,
     addTaskToStore, updateTaskInStore, removeTaskFromStore,
     addProjectToStore, updateProjectInStore, removeProjectFromStore,
-    filteredTasksByStatus, sseConnected
+    filteredTasksByStatus, filteredTasks, sseConnected, viewMode
   } from './lib/stores.js';
   import { locale, t, locales } from './lib/i18n/index.js';
   import ProjectSidebar from './components/ProjectSidebar.svelte';
   import NotificationSettings from './components/NotificationSettings.svelte';
   import ColumnSettings from './components/ColumnSettings.svelte';
   import KanbanBoard from './components/KanbanBoard.svelte';
+  import TableView from './components/TableView.svelte';
   import TaskModal from './components/TaskModal.svelte';
   import NotificationsPanel from './components/NotificationsPanel.svelte';
   import QuickCreate from './components/QuickCreate.svelte';
@@ -289,6 +290,20 @@
             <option value={p.id}>{p.name}</option>
           {/each}
         </select>
+        <div class="view-toggle">
+          <button
+            class="view-btn"
+            class:active={$viewMode === 'kanban'}
+            on:click={() => viewMode.set('kanban')}
+            title={$t('view.kanban')}
+          >▦</button>
+          <button
+            class="view-btn"
+            class:active={$viewMode === 'table'}
+            on:click={() => viewMode.set('table')}
+            title={$t('view.table')}
+          >☰</button>
+        </div>
       </div>
     </header>
 
@@ -314,11 +329,20 @@
         }}
       />
       <main class="content">
-        <KanbanBoard
-          tasksByStatus={$filteredTasksByStatus}
-          on:openTask={(e) => openTask(e.detail)}
-          on:statusChange={(e) => handleStatusChange(e.detail.id, e.detail.status, e.detail.reason)}
-        />
+        {#if $viewMode === 'table'}
+          <TableView
+            tasks={$filteredTasks}
+            projects={$projects}
+            on:openTask={(e) => openTask(e.detail)}
+            on:statusChange={(e) => handleStatusChange(e.detail.id, e.detail.status, e.detail.reason)}
+          />
+        {:else}
+          <KanbanBoard
+            tasksByStatus={$filteredTasksByStatus}
+            on:openTask={(e) => openTask(e.detail)}
+            on:statusChange={(e) => handleStatusChange(e.detail.id, e.detail.status, e.detail.reason)}
+          />
+        {/if}
       </main>
     </div>
   </div>
@@ -609,6 +633,39 @@
     outline: none;
   }
   .project-filter:focus { border-color: #0071e3; }
+
+  .view-toggle {
+    display: flex;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-left: 0.5rem;
+  }
+
+  .view-btn {
+    background: white;
+    border: none;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: #86868b;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+
+  .view-btn:first-child {
+    border-right: 1px solid #d2d2d7;
+  }
+
+  .view-btn:hover {
+    background: #f5f5f7;
+    color: #1d1d1f;
+  }
+
+  .view-btn.active {
+    background: #0071e3;
+    color: white;
+  }
 
   .badge {
     position: absolute;
