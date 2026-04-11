@@ -14,6 +14,7 @@
   let editPriority = task.priority;
   let editProjectId = task.project_id;
   let editTaskMode = task.task_mode || '';
+  let editAssignees = (task.assignees || []).join(', ');
   let activeTab = 'details';
 
   // Extract description for current locale; fall back to raw string (legacy data)
@@ -32,6 +33,7 @@
     editPriority = task.priority;
     editProjectId = task.project_id;
     editTaskMode = task.task_mode || '';
+    editAssignees = (task.assignees || []).join(', ');
   }
 
   const tabs = [
@@ -53,6 +55,7 @@
   }
 
   async function saveEdit() {
+    const assignees = editAssignees.split(',').map(s => s.trim()).filter(Boolean);
     const updated = {
       ...task,
       title: editTitle,
@@ -60,6 +63,7 @@
       priority: editPriority,
       project_id: editProjectId,
       task_mode: editTaskMode,
+      assignees: assignees,
     };
     dispatch('update', updated);
     editing = false;
@@ -139,6 +143,12 @@
               {$t('taskModal.parallel')}
             </label>
           </div>
+          <div class="edit-row">
+            <label class="assignee-label">
+              {$t('taskModal.assignee')}:
+              <input class="assignee-input" bind:value={editAssignees} placeholder="alice, bob" />
+            </label>
+          </div>
           <div class="edit-actions">
             <button class="save-btn" on:click={saveEdit}>{$t('taskModal.save')}</button>
             <button class="cancel-btn" on:click={() => editing = false}>{$t('taskModal.cancel')}</button>
@@ -153,10 +163,10 @@
               <span class="meta-label">{$t('taskModal.priority')}</span>
               <span class="meta-value priority-badge" data-priority={task.priority}>{$t('quickCreate.' + task.priority)}</span>
             </div>
-            {#if task.assignee}
+            {#if task.assignees && task.assignees.length > 0}
               <div class="meta-item">
                 <span class="meta-label">{$t('taskModal.assignee')}</span>
-                <span class="meta-value">{task.assignee}</span>
+                <span class="meta-value">{(task.assignees || []).join(', ')}</span>
               </div>
             {/if}
             {#if task.source && task.source !== 'manual'}

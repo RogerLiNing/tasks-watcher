@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -56,7 +57,7 @@ type Task struct {
 	Description  map[string]string `json:"description"`
 	Status       TaskStatus      `json:"status"`
 	Priority     Priority        `json:"priority"`
-	Assignee     string          `json:"assignee"`
+	Assignees    []string       `json:"assignees"`
 	Source       string          `json:"source"`
 	TaskMode     TaskMode        `json:"task_mode"`
 	ErrorMessage string          `json:"error_message,omitempty"`
@@ -181,6 +182,30 @@ func SerializeDescription(desc map[string]string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// SerializeAssignees converts a slice of assignees to a comma-separated string for DB storage.
+func SerializeAssignees(assignees []string) string {
+	if len(assignees) == 0 {
+		return ""
+	}
+	return strings.Join(assignees, ",")
+}
+
+// ParseAssignees converts a comma-separated string to a slice of assignees.
+func ParseAssignees(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func ValidTaskStatus(s string) bool {

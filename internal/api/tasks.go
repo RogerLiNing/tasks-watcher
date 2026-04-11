@@ -23,27 +23,29 @@ func NewTaskHandler(database *db.DB, sse *SSEHandler, disp *notifications.Dispat
 }
 
 type CreateTaskRequest struct {
-	ProjectID   string `json:"project_id"`
-	ProjectName string `json:"project_name"`
-	RepoPath    string `json:"repo_path"`
-	Title       string `json:"title"`
-	Description any    `json:"description"`
-	Locale      string `json:"locale"`
-	Priority    string `json:"priority"`
-	Assignee    string `json:"assignee"`
-	Source      string `json:"source"`
-	TaskMode    string `json:"task_mode"`
+	ProjectID   string   `json:"project_id"`
+	ProjectName string   `json:"project_name"`
+	RepoPath    string   `json:"repo_path"`
+	Title       string   `json:"title"`
+	Description any      `json:"description"`
+	Locale      string   `json:"locale"`
+	Priority    string   `json:"priority"`
+	Assignee    string   `json:"assignee"`     // legacy single assignee
+	Assignees   []string `json:"assignees"`    // multiple assignees
+	Source      string   `json:"source"`
+	TaskMode    string   `json:"task_mode"`
 }
 
 type UpdateTaskRequest struct {
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Description any    `json:"description"`
-	Locale      string `json:"locale"`
-	Priority    string `json:"priority"`
-	Assignee    string `json:"assignee"`
-	Source      string `json:"source"`
-	TaskMode    string `json:"task_mode"`
+	ProjectID   string   `json:"project_id"`
+	Title       string   `json:"title"`
+	Description any      `json:"description"`
+	Locale      string   `json:"locale"`
+	Priority    string   `json:"priority"`
+	Assignee    string   `json:"assignee"`     // legacy single assignee
+	Assignees   []string `json:"assignees"`    // multiple assignees
+	Source      string   `json:"source"`
+	TaskMode    string   `json:"task_mode"`
 }
 
 type StatusUpdateRequest struct {
@@ -151,13 +153,21 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		desc = models.MergeDescription(nil, req.Description)
 	}
 
+	// Resolve assignees: prefer assignees array, fall back to single assignee
+	var assignees []string
+	if len(req.Assignees) > 0 {
+		assignees = req.Assignees
+	} else if req.Assignee != "" {
+		assignees = []string{req.Assignee}
+	}
+
 	t := &models.Task{
 		ProjectID:   projectID,
 		Title:       req.Title,
 		Description: desc,
 		Status:      models.TaskStatusPending,
 		Priority:    priority,
-		Assignee:    req.Assignee,
+		Assignees:   assignees,
 		Source:      req.Source,
 	}
 
@@ -215,8 +225,11 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.ProjectID != "" {
 		t.ProjectID = req.ProjectID
 	}
-	if req.Assignee != "" {
-		t.Assignee = req.Assignee
+	// Update assignees: prefer assignees array, fall back to single assignee
+	if len(req.Assignees) > 0 {
+		t.Assignees = req.Assignees
+	} else if req.Assignee != "" {
+		t.Assignees = []string{req.Assignee}
 	}
 	if req.Source != "" {
 		t.Source = req.Source

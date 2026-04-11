@@ -864,8 +864,8 @@ func TestListTasks_FilterByAssignee(t *testing.T) {
 	defer db.Close()
 
 	pid := makeProject(t, db, "proj")
-	t1 := &models.Task{ProjectID: pid, Title: "t1", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "alice"}
-	t2 := &models.Task{ProjectID: pid, Title: "t2", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "bob"}
+	t1 := &models.Task{ProjectID: pid, Title: "t1", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignees: []string{"alice"}}
+	t2 := &models.Task{ProjectID: pid, Title: "t2", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignees: []string{"bob"}}
 	db.CreateTask(t1)
 	db.CreateTask(t2)
 
@@ -1524,7 +1524,7 @@ func TestListAgents_WithAssignees(t *testing.T) {
 
 	pid := makeProject(t, db, "proj")
 	for _, name := range []string{"alice", "bob", "charlie"} {
-		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: name}
+		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignees: []string{name}}
 		db.CreateTask(task)
 	}
 
@@ -1544,7 +1544,7 @@ func TestListAgents_Distinct(t *testing.T) {
 	pid := makeProject(t, db, "proj")
 	// Create multiple tasks with the same assignee
 	for i := 0; i < 3; i++ {
-		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "alice"}
+		task := &models.Task{ProjectID: pid, Title: "task", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignees: []string{"alice"}}
 		db.CreateTask(task)
 	}
 

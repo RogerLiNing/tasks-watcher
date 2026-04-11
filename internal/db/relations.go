@@ -568,13 +568,15 @@ func scanTasks(rows *sql.Rows) ([]models.Task, error) {
 		var errorMsg sql.NullString
 		var descStr sql.NullString
 		var taskMode sql.NullString
+		var assigneesStr string
 		if err := rows.Scan(
 			&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority,
-			&t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt,
+			&assigneesStr, &t.Source, &taskMode, &errorMsg, &heartbeatAt,
 			&t.CreatedAt, &t.UpdatedAt, &completedAt,
 		); err != nil {
 			return nil, err
 		}
+		t.Assignees = models.ParseAssignees(assigneesStr)
 		if descStr.Valid && descStr.String != "" {
 			var parsed map[string]string
 			if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {

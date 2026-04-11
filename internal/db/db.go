@@ -250,7 +250,7 @@ func (db *DB) CreateTask(t *models.Task) error {
 	_, err := db.conn.Exec(
 		`INSERT INTO tasks (id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, t.Assignee, t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.CreatedAt, t.UpdatedAt, t.CompletedAt,
+		t.ID, t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, models.SerializeAssignees(t.Assignees), t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.CreatedAt, t.UpdatedAt, t.CompletedAt,
 	)
 	return err
 }
@@ -262,10 +262,12 @@ func (db *DB) GetTask(id string) (*models.Task, error) {
 	var errorMsg sql.NullString
 	var descStr sql.NullString
 	var taskMode sql.NullString
+	var assigneesStr string
 	err := db.conn.QueryRow(
 		`SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at
 		 FROM tasks WHERE id = ?`, id,
-	).Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt)
+	).Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &assigneesStr, &t.Source, &taskMode, &errorMsg, &heartbeatAt, &t.CreatedAt, &t.UpdatedAt, &completedAt)
+	t.Assignees = models.ParseAssignees(assigneesStr)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -300,34 +302,42 @@ func (db *DB) ListTasks(projectID, status, assignee, search, source string, limi
 	query := `SELECT id, project_id, title, description, status, priority, assignee, source, task_mode, error_message, heartbeat_at, created_at, updated_at, completed_at FROM tasks WHERE 1=1`
 	countQuery := `SELECT COUNT(*) FROM tasks WHERE 1=1`
 	args := []interface{}{}
+	countArgs := []interface{}{}
+	appendArg := func(v string) {
+		args = append(args, v)
+		countArgs = append(countArgs, v)
+	}
 	if projectID != "" {
 		query += " AND project_id = ?"
 		countQuery += " AND project_id = ?"
-		args = append(args, projectID)
+		appendArg(projectID)
 	}
 	if status != "" {
 		query += " AND status = ?"
 		countQuery += " AND status = ?"
-		args = append(args, status)
+		appendArg(status)
 	}
 	if assignee != "" {
-		query += " AND assignee = ?"
-		countQuery += " AND assignee = ?"
-		args = append(args, assignee)
+		query += " AND (assignee = ? OR assignee LIKE ? OR assignee LIKE ? OR assignee LIKE ?)"
+		countQuery += " AND (assignee = ? OR assignee LIKE ? OR assignee LIKE ? OR assignee LIKE ?)"
+		appendArg(assignee)
+		appendArg(assignee + ",%")
+		appendArg("%," + assignee + ",%")
+		appendArg("%," + assignee)
 	}
 	if search != "" {
 		query += " AND title LIKE ?"
 		countQuery += " AND title LIKE ?"
-		args = append(args, "%"+search+"%")
+		appendArg("%" + search + "%")
 	}
 	if source != "" {
 		query += " AND source = ?"
 		countQuery += " AND source = ?"
-		args = append(args, source)
+		appendArg(source)
 	}
 
 	var total int
-	if err := db.conn.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := db.conn.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -353,9 +363,11 @@ func (db *DB) ListTasks(projectID, status, assignee, search, source string, limi
 		var errorMsg sql.NullString
 		var descStr sql.NullString
 		var taskMode sql.NullString
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &t.Assignee, &t.Source, &taskMode, &errorMsg, &t.CreatedAt, &t.UpdatedAt, &heartbeatAt, &completedAt); err != nil {
+		var assigneesStr string
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &descStr, &t.Status, &t.Priority, &assigneesStr, &t.Source, &taskMode, &errorMsg, &t.CreatedAt, &t.UpdatedAt, &heartbeatAt, &completedAt); err != nil {
 			return nil, 0, err
 		}
+		t.Assignees = models.ParseAssignees(assigneesStr)
 		if descStr.Valid && descStr.String != "" {
 			var parsed map[string]string
 			if err := json.Unmarshal([]byte(descStr.String), &parsed); err == nil {
@@ -385,7 +397,7 @@ func (db *DB) UpdateTask(t *models.Task) error {
 	t.UpdatedAt = models.Now()
 	_, err := db.conn.Exec(
 		`UPDATE tasks SET project_id = ?, title = ?, description = ?, status = ?, priority = ?, assignee = ?, source = ?, task_mode = ?, error_message = ?, heartbeat_at = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
-		t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, t.Assignee, t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.UpdatedAt, t.CompletedAt, t.ID,
+		t.ProjectID, t.Title, models.SerializeDescription(t.Description), t.Status, t.Priority, models.SerializeAssignees(t.Assignees), t.Source, t.TaskMode, t.ErrorMessage, t.HeartbeatAt, t.UpdatedAt, t.CompletedAt, t.ID,
 	)
 	return err
 }
@@ -420,13 +432,19 @@ func (db *DB) ListAgents() ([]string, error) {
 	}
 	defer rows.Close()
 
+	seen := map[string]bool{}
 	var agents []string
 	for rows.Next() {
 		var a string
 		if err := rows.Scan(&a); err != nil {
 			return nil, err
 		}
-		agents = append(agents, a)
+		for _, name := range models.ParseAssignees(a) {
+			if !seen[name] {
+				seen[name] = true
+				agents = append(agents, name)
+			}
+		}
 	}
 	return agents, rows.Err()
 }

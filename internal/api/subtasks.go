@@ -19,21 +19,23 @@ func NewSubtaskHandler(database *db.DB, sse *SSEHandler) *SubtaskHandler {
 }
 
 type createSubtaskReq struct {
-	Title       string `json:"title"`
-	Description any    `json:"description"`
-	Locale      string `json:"locale"`
-	Priority    string `json:"priority"`
-	Assignee    string `json:"assignee"`
+	Title       string   `json:"title"`
+	Description any      `json:"description"`
+	Locale      string   `json:"locale"`
+	Priority    string   `json:"priority"`
+	Assignee    string   `json:"assignee"`
+	Assignees   []string `json:"assignees"`
 }
 
 type addSubtaskReq struct {
-	ChildID     string `json:"child_id"`
-	Title       string `json:"title"`
-	Description any    `json:"description"`
-	Locale      string `json:"locale"`
-	Priority    string `json:"priority"`
-	Assignee    string `json:"assignee"`
-	Position    int    `json:"position"` // optional; auto-assigned if not provided
+	ChildID     string   `json:"child_id"`
+	Title       string   `json:"title"`
+	Description any      `json:"description"`
+	Locale      string   `json:"locale"`
+	Priority    string   `json:"priority"`
+	Assignee    string   `json:"assignee"`
+	Assignees   []string `json:"assignees"`
+	Position    int      `json:"position"` // optional; auto-assigned if not provided
 }
 
 type reorderSubtaskReq struct {
@@ -123,13 +125,20 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		desc = models.MergeDescription(nil, req.Description)
 	}
 
+	var assignees []string
+	if len(req.Assignees) > 0 {
+		assignees = req.Assignees
+	} else if req.Assignee != "" {
+		assignees = []string{req.Assignee}
+	}
+
 	t := &models.Task{
 		ProjectID:   parent.ProjectID,
 		Title:       req.Title,
 		Description: desc,
 		Status:      models.TaskStatusPending,
 		Priority:    priority,
-		Assignee:    req.Assignee,
+		Assignees:   assignees,
 		Source:      "manual",
 	}
 	if err := h.db.CreateTask(t); err != nil {

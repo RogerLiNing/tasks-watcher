@@ -107,9 +107,13 @@ func (d *Dispatcher) sendEmail(task *models.Task, msg string) {
 	}
 
 	subject := fmt.Sprintf("[Tasks Watcher] %s", msg)
+	var assigneeStr string
+	if len(task.Assignees) > 0 {
+		assigneeStr = strings.Join(task.Assignees, ", ")
+	}
 	body := fmt.Sprintf(
-		"Task: %s\nStatus: %s\nPriority: %s\nAssignee: %s\n\n%s\n\nView at: http://localhost:4242",
-		task.Title, task.Status, task.Priority, task.Assignee, msg,
+		"Task: %s\nStatus: %s\nPriority: %s\nAssignees: %s\n\n%s\n\nView at: http://localhost:4242",
+		task.Title, task.Status, task.Priority, assigneeStr, msg,
 	)
 
 	auth := smtp.PlainAuth("", emailCfg.SMTPUsername, emailCfg.SMTPPassword, emailCfg.SMTPHost)

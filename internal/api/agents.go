@@ -50,25 +50,27 @@ func (h *AgentHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	var noAgent bool
 
 	for _, t := range tasks {
-		name := t.Assignee
-		if name == "" {
+		assignees := t.Assignees
+		if len(assignees) == 0 {
 			noAgent = true
 			continue
 		}
-		if _, ok := byAgent[name]; !ok {
-			byAgent[name] = &counts{}
-		}
-		c := byAgent[name]
-		c.total++
-		switch t.Status {
-		case "in_progress":
-			c.active++
-		case "pending":
-			c.pending++
-		case "completed":
-			c.completed++
-		case "failed", "cancelled":
-			c.failed++
+		for _, name := range assignees {
+			if _, ok := byAgent[name]; !ok {
+				byAgent[name] = &counts{}
+			}
+			c := byAgent[name]
+			c.total++
+			switch t.Status {
+			case "in_progress":
+				c.active++
+			case "pending":
+				c.pending++
+			case "completed":
+				c.completed++
+			case "failed", "cancelled":
+				c.failed++
+			}
 		}
 	}
 

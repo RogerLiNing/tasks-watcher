@@ -163,7 +163,7 @@
                 </span>
               </td>
               <td class="assignee-cell">
-                {task.assignee || '—'}
+                {(task.assignees || []).join(', ') || '—'}
               </td>
               <td>
                 {#if task.source && sourceIcons[task.source]}

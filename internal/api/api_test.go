@@ -440,8 +440,8 @@ func TestTaskHandler_Update_AssigneeAndSource(t *testing.T) {
 	}
 	var updated models.Task
 	json.NewDecoder(w.Body).Decode(&updated)
-	if updated.Assignee != "alice" {
-		t.Errorf("expected assignee='alice', got %q", updated.Assignee)
+	if len(updated.Assignees) != 1 || updated.Assignees[0] != "alice" {
+		t.Errorf("expected assignees=['alice'], got %v", updated.Assignees)
 	}
 	if updated.Source != "claude-code" {
 		t.Errorf("expected source='claude-code', got %q", updated.Source)
@@ -2631,9 +2631,9 @@ func TestAgentHandler_Overview_WithTasks(t *testing.T) {
 	handler := NewAgentHandler(database)
 	p := &models.Project{Name: "proj"}
 	database.CreateProject(p)
-	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 1", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignee: "agent-a"})
-	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 2", Status: models.TaskStatusCompleted, Priority: models.PriorityMedium, Assignee: "agent-a"})
-	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 3", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignee: "agent-b"})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 1", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignees: []string{"agent-a"}})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 2", Status: models.TaskStatusCompleted, Priority: models.PriorityMedium, Assignees: []string{"agent-a"}})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "Task 3", Status: models.TaskStatusPending, Priority: models.PriorityMedium, Assignees: []string{"agent-b"}})
 
 	router := mux.NewRouter()
 	handler.Register(router)
@@ -2655,7 +2655,7 @@ func TestAgentHandler_Overview_WithNoAgentTasks(t *testing.T) {
 	database.CreateProject(p)
 	// Tasks with no assignee should set noAgent=true
 	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "unassigned-1", Status: models.TaskStatusPending, Priority: models.PriorityMedium})
-	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "unassigned-2", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignee: "agent-a"})
+	database.CreateTask(&models.Task{ProjectID: p.ID, Title: "unassigned-2", Status: models.TaskStatusInProgress, Priority: models.PriorityMedium, Assignees: []string{"agent-a"}})
 
 	router := mux.NewRouter()
 	handler.Register(router)
