@@ -1,4 +1,3 @@
-import { api } from './api.js';
 import { sseConnected } from './stores.js';
 
 let es = null;
@@ -11,8 +10,8 @@ export function connectSSE() {
     es.close();
   }
 
-  const key = api.getApiKey();
-  const url = `/api/events${key ? '?api_key=' + encodeURIComponent(key) : ''}`;
+  // Browser automatically sends HttpOnly session cookie
+  const url = '/api/events';
   console.log('[SSE] Connecting to', url);
 
   try {

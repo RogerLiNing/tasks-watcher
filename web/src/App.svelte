@@ -1,13 +1,14 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { api, setApiKey, getApiKey } from './lib/api.js';
+  import { api } from './lib/api.js';
   import { connectSSE, disconnectSSE, onSSEEvent } from './lib/sse.js';
   import {
     projects, tasks, notifications, unreadCount,
     selectedProjectId, selectedSource, showNotifications,
     addTaskToStore, updateTaskInStore, removeTaskFromStore,
     addProjectToStore, updateProjectInStore, removeProjectFromStore,
-    filteredTasksByStatus, filteredTasks, sseConnected, viewMode
+    filteredTasksByStatus, filteredTasks, sseConnected, viewMode,
+    currentUser, isAuthenticated, columns
   } from './lib/stores.js';
   import { locale, t, locales } from './lib/i18n/index.js';
   import ProjectSidebar from './components/ProjectSidebar.svelte';
@@ -18,11 +19,10 @@
   import TaskModal from './components/TaskModal.svelte';
   import NotificationsPanel from './components/NotificationsPanel.svelte';
   import QuickCreate from './components/QuickCreate.svelte';
-  import { columns } from './lib/stores.js';
+  import AuthForm from './components/AuthForm.svelte';
 
   let selectedTask = null;
   let loading = true;
-  let authError = false;
   let showSettings = false;
   let settingsTab = 'notifications'; // 'notifications' | 'columns'
   let toastMessage = '';
@@ -41,15 +41,9 @@
       notifications.set(notifData.notifications || []);
       unreadCount.set(notifData.unread_count || 0);
       loading = false;
-      authError = false;
     } catch (e) {
-      if (e.message === 'UNAUTHORIZED') {
-        authError = true;
-        loading = false;
-      } else {
-        console.error('Failed to load data', e);
-        loading = false;
-      }
+      console.error('Failed to load data', e);
+      loading = false;
     }
     // Load columns non-blocking — old servers may not have this endpoint
     try {
@@ -60,45 +54,37 @@
     }
   }
 
-  async function handleApiKeySubmit() {
-    const input = document.getElementById('api-key-input');
-    if (!input) return;
-    const key = input.value.trim();
-    if (!key) return;
-    setApiKey(key);
-    authError = false;
-    await loadData();
-    connectSSE();
+  async function checkAuth() {
+    loading = true;
+    try {
+      const res = await api.me();
+      currentUser.set(res.user);
+      isAuthenticated.set(true);
+      await loadData();
+      connectSSE();
+    } catch (e) {
+      currentUser.set(null);
+      isAuthenticated.set(false);
+      loading = false;
+    }
   }
 
-  onMount(async () => {
-    const storedKey = getApiKey();
-    let key = storedKey;
+  async function handleLogout() {
+    try {
+      await api.logout();
+    } catch (_) {}
+    disconnectSSE();
+    currentUser.set(null);
+    isAuthenticated.set(false);
+    projects.set([]);
+    tasks.set([]);
+    notifications.set([]);
+    unreadCount.set(0);
+  }
 
-    // Auto-fetch API key if not in localStorage
-    if (!key) {
-      try {
-        const res = await fetch('/api/key');
-        if (res.ok) {
-          const data = await res.json();
-          key = data.api_key;
-          setApiKey(key);
-        }
-      } catch (_) {
-        // Server may not be reachable, fall through to setup screen
-      }
-    }
+  onMount(() => {
+    checkAuth();
 
-    if (!key) {
-      loading = false;
-      return;
-    }
-    await loadData();
-    if (!authError) {
-      connectSSE();
-    }
-
-    // Handle SSE events
     const unsub = onSSEEvent((event) => {
       switch (event.type) {
         case 'task.created':
@@ -119,7 +105,6 @@
         case 'task.subtask.added':
         case 'task.subtask.removed':
         case 'task.subtask.reordered':
-          // Refresh the affected task if it's the selected one
           if (selectedTask && event.payload && (event.payload.task_id || event.payload.parent_id)) {
             const taskId = event.payload.task_id || event.payload.parent_id;
             if (selectedTask.id === taskId) {
@@ -248,20 +233,8 @@
     <div class="spinner"></div>
     <p>{$t('app.loading')}</p>
   </div>
-{:else if authError}
-  <div class="setup-screen">
-    <div class="setup-card">
-      <h1>{$t('app.connectTitle')}</h1>
-      <p>{$t('app.connectHint')}</p>
-      <input
-        id="api-key-input"
-        type="password"
-        placeholder={$t('app.apiKeyPlaceholder')}
-        on:keydown={(e) => e.key === 'Enter' && handleApiKeySubmit()}
-      />
-      <button on:click={handleApiKeySubmit}>{$t('app.connectBtn')}</button>
-    </div>
-  </div>
+{:else if !$isAuthenticated}
+  <AuthForm />
 {:else}
   <div class="app-layout">
     <header class="topbar">
@@ -310,6 +283,10 @@
             on:click={() => viewMode.set('table')}
             title={$t('view.table')}
           >☰</button>
+        </div>
+        <div class="user-menu">
+          <span class="username">{$currentUser?.username || ''}</span>
+          <button class="logout-btn" on:click={handleLogout} title={$t('auth.logout')}>⏻</button>
         </div>
       </div>
     </header>
@@ -493,7 +470,7 @@
     overflow-y: auto;
   }
 
-  .loading-screen, .setup-screen {
+  .loading-screen {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -514,43 +491,6 @@
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
-
-  .setup-card {
-    background: white;
-    border-radius: 16px;
-    padding: 2.5rem;
-    max-width: 420px;
-    width: 90%;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.1);
-    text-align: center;
-  }
-
-  .setup-card h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-  .setup-card p { color: #6e6e73; font-size: 0.9rem; margin-bottom: 1rem; }
-
-  .setup-card input {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: 1px solid #d2d2d7;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    margin-bottom: 1rem;
-    outline: none;
-  }
-  .setup-card input:focus { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,0.15); }
-
-  .setup-card button {
-    width: 100%;
-    padding: 0.75rem;
-    background: #0071e3;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .setup-card button:hover { background: #0077ed; }
 
   .app-layout { display: flex; flex-direction: column; height: 100vh; }
 
@@ -672,6 +612,41 @@
   .view-btn.active {
     background: #0071e3;
     color: white;
+  }
+
+  .user-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.75rem;
+    padding-left: 0.75rem;
+    border-left: 1px solid #e5e5ea;
+  }
+
+  .username {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6e6e73;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .logout-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 4px;
+    border-radius: 6px;
+    color: #86868b;
+    transition: all 0.15s;
+  }
+
+  .logout-btn:hover {
+    background: #fff0ee;
+    color: #ff3b30;
   }
 
   .badge {

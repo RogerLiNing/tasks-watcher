@@ -1102,7 +1102,7 @@ func TestAuthMiddleware_MissingAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1121,7 +1121,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1141,7 +1141,7 @@ func TestAuthMiddleware_InvalidFormat(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1161,7 +1161,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1180,7 +1180,7 @@ func TestAuthMiddleware_QueryParamAuth(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1198,7 +1198,7 @@ func TestAuthMiddleware_SkipsSSERoute(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1218,7 +1218,7 @@ func TestAuthMiddleware_SkipsHealthRoute(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -1236,7 +1236,7 @@ func TestAuthMiddleware_SkipsKeyRoute(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -3445,7 +3445,7 @@ func TestAuthMiddleware_MissingAuthEmptyHeader(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -3788,7 +3788,7 @@ func TestAuthMiddleware_QueryParamAuth_WrongKey(t *testing.T) {
 	database := setupTaskTestDB(t)
 	sse := NewSSEHandler("my-secret-key")
 	handler := NewTaskHandler(database, sse, nil)
-	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"})
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
 
 	router := mux.NewRouter()
 	router.Use(auth.Authenticate)
@@ -3818,6 +3818,216 @@ func TestColumnHandler_Create_DBError(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 when DB closed, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Auth API tests ---
+
+func TestAuthAPI_Register(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAuthAPIHandler(database, "test-secret")
+
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	// Register success
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret123"}`)
+	req := httptest.NewRequest("POST", "/auth/register", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Duplicate username
+	body2 := bytes.NewBufferString(`{"username":"alice","password":"secret456"}`)
+	req2 := httptest.NewRequest("POST", "/auth/register", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Errorf("expected 409 for duplicate, got %d", w2.Code)
+	}
+}
+
+func TestAuthAPI_Register_Validation(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAuthAPIHandler(database, "test-secret")
+
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	cases := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"short username", `{"username":"ab","password":"secret123"}`, 400},
+		{"short password", `{"username":"alice","password":"short"}`, 400},
+		{"empty body", `{}`, 400},
+		{"invalid chars in username", `{"username":"alice!","password":"secret123"}`, 400},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := bytes.NewBufferString(c.body)
+			req := httptest.NewRequest("POST", "/auth/register", body)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code != c.want {
+				t.Errorf("expected %d, got %d: %s", c.want, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestAuthAPI_Login(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAuthAPIHandler(database, "test-secret")
+
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	// Register first
+	regBody := bytes.NewBufferString(`{"username":"alice","password":"secret123"}`)
+	regReq := httptest.NewRequest("POST", "/auth/register", regBody)
+	regReq.Header.Set("Content-Type", "application/json")
+	regW := httptest.NewRecorder()
+	router.ServeHTTP(regW, regReq)
+
+	// Login success
+	loginBody := bytes.NewBufferString(`{"username":"alice","password":"secret123"}`)
+	loginReq := httptest.NewRequest("POST", "/auth/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", loginW.Code, loginW.Body.String())
+	}
+
+	// Check session cookie is set
+	cookies := loginW.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session_token" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Error("expected session_token cookie to be set")
+	}
+
+	// Wrong password
+	wrongBody := bytes.NewBufferString(`{"username":"alice","password":"wrongpass"}`)
+	wrongReq := httptest.NewRequest("POST", "/auth/login", wrongBody)
+	wrongReq.Header.Set("Content-Type", "application/json")
+	wrongW := httptest.NewRecorder()
+	router.ServeHTTP(wrongW, wrongReq)
+	if wrongW.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for wrong password, got %d", wrongW.Code)
+	}
+}
+
+func TestAuthAPI_Login_NoUser(t *testing.T) {
+	database := setupTaskTestDB(t)
+	handler := NewAuthAPIHandler(database, "test-secret")
+
+	router := mux.NewRouter()
+	handler.Register(router)
+
+	body := bytes.NewBufferString(`{"username":"nobody","password":"secret123"}`)
+	req := httptest.NewRequest("POST", "/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for nonexistent user, got %d", w.Code)
+	}
+}
+
+func TestAuthAPI_Me(t *testing.T) {
+	database := setupTaskTestDB(t)
+	jwtSecret := "test-secret"
+	authHandler := NewAuthAPIHandler(database, jwtSecret)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "cli-key", JWTSecret: jwtSecret}, database)
+
+	// Mirror production router structure: parent with /api subrouter so middleware
+	// path checks (/api/auth/login etc.) match the routes authHandler registers.
+	parentRouter := mux.NewRouter()
+	apiRouter := parentRouter.PathPrefix("/api").Subrouter()
+	apiRouter.Use(auth.Authenticate)
+	authHandler.Register(apiRouter)
+
+	// Register and login to get cookie
+	regBody := bytes.NewBufferString(`{"username":"alice","password":"secret123"}`)
+	regReq := httptest.NewRequest("POST", "/api/auth/register", regBody)
+	regReq.Header.Set("Content-Type", "application/json")
+	regW := httptest.NewRecorder()
+	parentRouter.ServeHTTP(regW, regReq)
+
+	loginBody := bytes.NewBufferString(`{"username":"alice","password":"secret123"}`)
+	loginReq := httptest.NewRequest("POST", "/api/auth/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	parentRouter.ServeHTTP(loginW, loginReq)
+
+	cookies := loginW.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session_token" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected session_token cookie")
+	}
+
+	// Me without cookie → 401
+	meReq := httptest.NewRequest("GET", "/api/auth/me", nil)
+	meW := httptest.NewRecorder()
+	parentRouter.ServeHTTP(meW, meReq)
+	if meW.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without cookie, got %d", meW.Code)
+	}
+
+	// Me with cookie → 200
+	meReq2 := httptest.NewRequest("GET", "/api/auth/me", nil)
+	meReq2.AddCookie(sessionCookie)
+	meW2 := httptest.NewRecorder()
+	parentRouter.ServeHTTP(meW2, meReq2)
+	if meW2.Code != http.StatusOK {
+		t.Errorf("expected 200 with cookie, got %d: %s", meW2.Code, meW2.Body.String())
+	}
+}
+
+func TestAuthMiddleware_PublicEndpointsSkipAuth(t *testing.T) {
+	database := setupTaskTestDB(t)
+	sse := NewSSEHandler("my-secret-key")
+	handler := NewTaskHandler(database, sse, nil)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "my-secret-key"}, database)
+
+	router := mux.NewRouter()
+	router.Use(auth.Authenticate)
+	handler.Register(router)
+
+	// GET /tasks with cookie auth (no prior login → 401)
+	req := httptest.NewRequest("GET", "/tasks", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without auth, got %d", w.Code)
+	}
+
+	// GET /tasks with Bearer API key → 200
+	req2 := httptest.NewRequest("GET", "/tasks", nil)
+	req2.Header.Set("Authorization", "Bearer my-secret-key")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected 200 with API key, got %d", w2.Code)
 	}
 }
 

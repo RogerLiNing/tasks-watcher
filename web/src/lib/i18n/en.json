@@ -202,6 +202,28 @@
     "kanban": "Kanban",
     "table": "Table"
   },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "login": "Log In",
+    "register": "Sign Up",
+    "logout": "Log Out",
+    "loginHint": "Sign in to access your tasks",
+    "registerHint": "Create an account to get started",
+    "usernamePlaceholder": "e.g. alice",
+    "passwordPlaceholder": "••••••••",
+    "confirmPasswordPlaceholder": "••••••••",
+    "noAccount": "No account?",
+    "hasAccount": "Already have an account?",
+    "errors": {
+      "fillAll": "Please fill in all fields",
+      "passwordMismatch": "Passwords do not match",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "usernameTaken": "Username is already taken",
+      "invalidCredentials": "Invalid username or password"
+    }
+  },
   "commentPanel": {
     "title": "Comments",
     "empty": "No comments yet",

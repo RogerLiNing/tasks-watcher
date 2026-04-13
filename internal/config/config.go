@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
 	DBPath      string
 	Port        string
 	APIKey      string
+	JWTSecret   string
 	Notify      bool
 	DataDir     string
 	WebhookDir  string
@@ -56,6 +58,7 @@ func Load() (*Config, error) {
 		DBPath:     dbPath,
 		Port:       port,
 		APIKey:     apiKey,
+		JWTSecret:  loadOrCreateJWTSecret(dataDir),
 		Notify:     notify == "true",
 		DataDir:    dataDir,
 		WebhookDir: filepath.Join(dataDir, "webhooks"),
@@ -106,4 +109,17 @@ func RegenerateAPIKey(dataDir string) (string, error) {
 	}
 
 	return key, nil
+}
+
+func loadOrCreateJWTSecret(dataDir string) string {
+	secretPath := filepath.Join(dataDir, "jwt.secret")
+	if data, err := os.ReadFile(secretPath); err == nil && len(data) >= 32 {
+		return strings.TrimSpace(string(data))
+	}
+	// Generate a new secret
+	secretBytes := make([]byte, 32)
+	rand.Read(secretBytes)
+	secret := hex.EncodeToString(secretBytes)
+	os.WriteFile(secretPath, []byte(secret), 0600)
+	return secret
 }

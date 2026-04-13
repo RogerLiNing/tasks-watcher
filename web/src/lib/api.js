@@ -1,34 +1,18 @@
 const API_BASE = '/api';
 
-let apiKey = localStorage.getItem('tasks_watcher_api_key');
-
-export function setApiKey(key) {
-  apiKey = key;
-  localStorage.setItem('tasks_watcher_api_key', key);
-}
-
-export function getApiKey() {
-  return apiKey;
-}
-
-function headers() {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`,
-  };
-}
-
 async function request(method, path, body) {
-  const opts = { method, headers: headers() };
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) {
     opts.body = JSON.stringify(body);
   }
   const res = await fetch(API_BASE + path, opts);
   if (res.status === 401) {
+    // Clear session and redirect to login
+    currentUser.set(null);
+    isAuthenticated.set(false);
     throw new Error('UNAUTHORIZED');
   }
   if (!res.ok) {
-    // API returns JSON error bodies — parse them for a useful message
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       const err = await res.json();
@@ -40,9 +24,21 @@ async function request(method, path, body) {
   return res.json();
 }
 
+import { currentUser, isAuthenticated } from './stores.js';
+
+export { currentUser, isAuthenticated };
+
 export const api = {
   // Health
   health: () => request('GET', '/health'),
+
+  // Auth
+  register: (username, password) =>
+    request('POST', '/auth/register', { username, password }),
+  login: (username, password) =>
+    request('POST', '/auth/login', { username, password }),
+  logout: () => request('POST', '/auth/logout'),
+  me: () => request('GET', '/auth/me'),
 
   // Projects
   listProjects: () => request('GET', '/projects'),

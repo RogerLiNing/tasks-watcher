@@ -31,10 +31,9 @@ func main() {
 	dispatcher := notifications.NewDispatcher(database, sse)
 
 	router := mux.NewRouter()
-	auth := api.NewAuthMiddleware(cfg)
+	auth := api.NewAuthMiddleware(cfg, database)
 
-	// SSE endpoint (auth via query param ?api_key=...)
-	router.HandleFunc("/api/events", sse.ServeHTTP)
+	// SSE endpoint (auth via query param ?api_key=... OR via session cookie — both handled by auth middleware)
 
 	// Health check (no auth)
 	router.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +51,9 @@ func main() {
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(auth.Authenticate)
 
+	// SSE endpoint inside protected router (auth via ?api_key= OR cookie)
+	apiRouter.HandleFunc("/events", sse.ServeHTTP).Methods("GET")
+
 	// API handlers
 	projectHandler := api.NewProjectHandler(database, sse)
 	taskHandler := api.NewTaskHandler(database, sse, dispatcher)
@@ -63,8 +65,10 @@ func main() {
 	subtaskHandler := api.NewSubtaskHandler(database, sse)
 	columnHandler := api.NewColumnHandler(database, sse)
 	commentHandler := api.NewCommentHandler(database, sse)
+	authHandler := api.NewAuthAPIHandler(database, cfg.JWTSecret)
 
 	// Register on subrouter — handlers use paths WITHOUT /api prefix (subrouter handles it)
+	authHandler.Register(apiRouter)
 	projectHandler.Register(apiRouter)
 	taskHandler.Register(apiRouter)
 	notifHandler.Register(apiRouter)
