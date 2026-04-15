@@ -24,6 +24,13 @@
     loadComments();
   });
 
+  // Reload when task prop changes (e.g., after SSE real-time update)
+  let prevTaskId = '';
+  $: if (task?.id && task.id !== prevTaskId) {
+    prevTaskId = task.id;
+    loadComments();
+  }
+
   async function loadComments() {
     loading = true;
     error = '';
