@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,24 +165,24 @@ func (c *Client) TaskCreate(args map[string]interface{}) (*mcp.ToolsCallResult, 
 }
 
 func (c *Client) TaskList(args map[string]interface{}) (*mcp.ToolsCallResult, error) {
-	path := "/api/tasks?"
+	q := url.Values{}
 	if pid := str(args["project_id"], ""); pid != "" {
-		path += "project_id=" + pid + "&"
+		q.Set("project_id", pid)
 	}
-	if status := str(args["status"], ""); status != "" {
-		path += "status=" + status + "&"
+	if s := str(args["status"], ""); s != "" {
+		q.Set("status", s)
 	}
-	if asgn := str(args["assignee"], ""); asgn != "" {
-		path += "assignee=" + asgn + "&"
+	if a := str(args["assignee"], ""); a != "" {
+		q.Set("assignee", a)
 	}
-	if search := str(args["search"], ""); search != "" {
-		path += "search=" + search + "&"
+	if s := str(args["search"], ""); s != "" {
+		q.Set("search", s)
 	}
 	if src := str(args["source"], ""); src != "" {
-		path += "source=" + src + "&"
+		q.Set("source", src)
 	}
 
-	data, status, err := c.do("GET", path, nil)
+	data, status, err := c.do("GET", "/api/tasks?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -912,8 +913,8 @@ func detectGitRepo() string {
 // getOrCreateProjectByRepo calls GET /projects/by-repo?repo_path=... to find or create
 // the project for the given repository path.
 func (c *Client) getOrCreateProjectByRepo(repoPath string) (string, error) {
-	url := c.BaseURL + "/api/projects/by-repo?repo_path=" + repoPath
-	req, err := http.NewRequest("GET", url, nil)
+	q := url.Values{"repo_path": []string{repoPath}}
+	req, err := http.NewRequest("GET", c.BaseURL+"/api/projects/by-repo?"+q.Encode(), nil)
 	if err != nil {
 		return "", err
 	}

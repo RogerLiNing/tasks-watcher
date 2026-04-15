@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,21 +204,23 @@ func taskListCmd() *cobra.Command {
 		Example: "  tasks-watcher task list\n  tasks-watcher task list -s in_progress\n  tasks-watcher task list --search auth --source claude-code",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := "/api/tasks?"
+			q := url.Values{}
 			if project != "" {
-				path += "project_id=" + project + "&"
+				q.Set("project_id", project)
 			}
 			if status != "" {
-				path += "status=" + status + "&"
+				q.Set("status", status)
 			}
 			if assignee != "" {
-				path += "assignee=" + assignee + "&"
+				q.Set("assignee", assignee)
 			}
 			if search != "" {
-				path += "search=" + search + "&"
+				q.Set("search", search)
 			}
 			if source != "" {
-				path += "source=" + source + "&"
+				q.Set("source", source)
 			}
+			path += q.Encode()
 
 			resp, err := apiRequest("GET", path, nil)
 			if err != nil {
@@ -532,7 +535,8 @@ func resolveProjectFromGit() (string, string, error) {
 	repoPath = strings.TrimSpace(string(out))
 
 	serverURL, apiKey := resolveConfig()
-	url := serverURL + "/api/projects/by-repo?repo_path=" + repoPath
+	q := url.Values{"repo_path": []string{repoPath}}
+	url := serverURL + "/api/projects/by-repo?" + q.Encode()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", repoPath, err

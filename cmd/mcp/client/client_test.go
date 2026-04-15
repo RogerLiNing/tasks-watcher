@@ -150,7 +150,7 @@ func TestClient_TaskList_WithFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TaskList failed: %v", err)
 	}
-	if receivedPath != "/api/tasks?project_id=proj-1&status=in_progress&assignee=me&search=auth&" {
+	if receivedPath != "/api/tasks?assignee=me&project_id=proj-1&search=auth&status=in_progress" {
 		t.Errorf("unexpected query: %s", receivedPath)
 	}
 }
