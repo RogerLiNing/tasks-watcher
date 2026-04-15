@@ -278,7 +278,9 @@ func (h *AuthAPIHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := h.db.GetUserByID(userID)
 	if err != nil || u == nil {
-		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+		// Treat lookup errors as unauthenticated so the frontend
+		// correctly redirects to the login page instead of showing the app.
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
