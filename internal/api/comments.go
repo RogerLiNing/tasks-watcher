@@ -164,10 +164,14 @@ func (h *CommentHandler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.db.GetComment(commentID)
+	c, err := h.db.GetComment(commentID)
 	if err != nil {
 		log.Printf("GetComment(%s) in DeleteComment failed: %v", commentID, err)
 		http.Error(w, `{"error":"failed to get comment"}`, http.StatusInternalServerError)
+		return
+	}
+	if c == nil {
+		http.Error(w, `{"error":"comment not found"}`, http.StatusNotFound)
 		return
 	}
 

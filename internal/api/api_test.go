@@ -4031,3 +4031,422 @@ func TestAuthMiddleware_PublicEndpointsSkipAuth(t *testing.T) {
 	}
 }
 
+// --- CommentHandler tests ---
+
+// setupCommentRouter creates a parent router with auth middleware, then registers
+// the comment handler under /api/tasks/{taskID}/comments.
+// Returns the parent router, database, and the auth middleware for cookie injection.
+func setupCommentRouter(t *testing.T) (*mux.Router, *db.DB, string) {
+	database := setupTaskTestDB(t)
+	jwtSecret := "comment-test-secret"
+	authMiddleware := NewAuthMiddleware(&config.Config{APIKey: "test-key", JWTSecret: jwtSecret}, database)
+	authHandler := NewAuthAPIHandler(database, jwtSecret)
+	commentHandler := NewCommentHandler(database, NewSSEHandler("test-key"))
+
+	parentRouter := mux.NewRouter()
+	apiRouter := parentRouter.PathPrefix("/api").Subrouter()
+	apiRouter.Use(authMiddleware.Authenticate)
+
+	// Auth routes (login/register)
+	authHandler.Register(apiRouter)
+
+	// Task routes needed for creating a task to comment on
+	taskHandler := NewTaskHandler(database, NewSSEHandler("test-key"), nil)
+	taskHandler.Register(apiRouter)
+
+	// Comment routes: /api/tasks/{id}/comments
+	commentHandler.Register(apiRouter)
+
+	return parentRouter, database, jwtSecret
+}
+
+// registerAndLogin creates a user, logs in, and returns the session cookie.
+func registerAndLogin(t *testing.T, router *mux.Router, username, password string) *http.Cookie {
+	regBody := newJSONBody(map[string]string{"username": username, "password": password})
+	regReq := httptest.NewRequest("POST", "/api/auth/register", regBody)
+	regReq.Header.Set("Content-Type", "application/json")
+	regW := httptest.NewRecorder()
+	router.ServeHTTP(regW, regReq)
+	if regW.Code != http.StatusCreated && regW.Code != http.StatusOK {
+		t.Fatalf("register failed: %d %s", regW.Code, regW.Body.String())
+	}
+
+	loginBody := newJSONBody(map[string]string{"username": username, "password": password})
+	loginReq := httptest.NewRequest("POST", "/api/auth/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", loginW.Code, loginW.Body.String())
+	}
+
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == "session_token" {
+			return c
+		}
+	}
+	t.Fatal("no session_token cookie returned")
+	return nil
+}
+
+// createTaskWithAuth creates a task via the HTTP API with session auth and returns its ID.
+func createTaskWithAuth(t *testing.T, router *mux.Router, cookie *http.Cookie, title string) string {
+	body := newJSONBody(map[string]string{"title": title})
+	req := httptest.NewRequest("POST", "/api/tasks", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("createTask failed: %d %s", w.Code, w.Body.String())
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	return result["id"].(string)
+}
+
+func TestCommentHandler_List_Unauthenticated(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	req := httptest.NewRequest("GET", "/api/tasks/some-task-id/comments", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for unauthenticated request, got %d", w.Code)
+	}
+}
+
+func TestCommentHandler_List_Empty(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "alice", "secret123")
+	taskID := createTaskWithAuth(t, router, cookie, "Test Task")
+
+	req := httptest.NewRequest("GET", "/api/tasks/"+taskID+"/comments", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	comments, ok := resp["comments"].([]interface{})
+	if !ok {
+		t.Fatalf("expected comments array, got %T", resp["comments"])
+	}
+	if len(comments) != 0 {
+		t.Errorf("expected 0 comments, got %d", len(comments))
+	}
+}
+
+func TestCommentHandler_Create_Unauthenticated(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	body := newJSONBody(map[string]string{"content": "Hello"})
+	req := httptest.NewRequest("POST", "/api/tasks/some-task/comments", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestCommentHandler_Create_EmptyContent(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "bob", "password99")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Empty Content")
+
+	// Missing content field
+	body := newJSONBody(map[string]interface{}{})
+	req := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty content, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Empty content string
+	body2 := newJSONBody(map[string]string{"content": ""})
+	req2 := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(cookie)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty content string, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestCommentHandler_Create_Success(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "charlie", "passw987")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Comments")
+
+	body := newJSONBody(map[string]string{"content": "This is a test comment"})
+	req := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var comment map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &comment); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	if comment["content"] != "This is a test comment" {
+		t.Errorf("content mismatch: got %v", comment["content"])
+	}
+	if comment["author"] == "" {
+		t.Error("author should be set")
+	}
+	if comment["author_username"] == "" {
+		t.Error("author_username should be populated")
+	}
+}
+
+func TestCommentHandler_Create_AuthorIgnored(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "dave", "passw111")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Author Check")
+
+	// Client sends an author field — it must be ignored
+	body := newJSONBody(map[string]string{"content": "My comment", "author": "imposter"})
+	req := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var comment map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &comment); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	// author must be the authenticated user, not "imposter"
+	if comment["author"] == "imposter" {
+		t.Error("author field in request body must be ignored; got 'imposter'")
+	}
+}
+
+func TestCommentHandler_Update_Unauthenticated(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	body := newJSONBody(map[string]string{"content": "Updated"})
+	req := httptest.NewRequest("PUT", "/api/tasks/t1/comments/c1", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestCommentHandler_Update_NotFound(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "eve", "passw222")
+	createTaskWithAuth(t, router, cookie, "Task for NotFound")
+
+	body := newJSONBody(map[string]string{"content": "Updated comment"})
+	req := httptest.NewRequest("PUT", "/api/tasks/does-not-exist/comments/also-fake", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCommentHandler_Update_Success(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "eve2", "passw333")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Update")
+
+	// Create a comment
+	createBody := newJSONBody(map[string]string{"content": "Original content"})
+	createReq := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", createBody)
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.AddCookie(cookie)
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create failed: %d %s", createW.Code, createW.Body.String())
+	}
+	var created map[string]interface{}
+	json.Unmarshal(createW.Body.Bytes(), &created)
+	commentID := created["id"].(string)
+	originalAuthor := created["author"].(string)
+
+	// Update the comment
+	updateBody := newJSONBody(map[string]string{"content": "Updated content"})
+	updateReq := httptest.NewRequest("PUT", "/api/tasks/"+taskID+"/comments/"+commentID, updateBody)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.AddCookie(cookie)
+	updateW := httptest.NewRecorder()
+	router.ServeHTTP(updateW, updateReq)
+
+	if updateW.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", updateW.Code, updateW.Body.String())
+	}
+	var updated map[string]interface{}
+	json.Unmarshal(updateW.Body.Bytes(), &updated)
+	if updated["content"] != "Updated content" {
+		t.Errorf("content not updated: got %v", updated["content"])
+	}
+	// Author must be preserved from creation (not changed to empty)
+	if updated["author"] != originalAuthor {
+		t.Errorf("author changed: was %s, got %s", originalAuthor, updated["author"])
+	}
+}
+
+func TestCommentHandler_Update_AuthorFieldIgnored(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "frank", "passw444")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Author Field")
+
+	// Create comment
+	createBody := newJSONBody(map[string]string{"content": "Original"})
+	createReq := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", createBody)
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.AddCookie(cookie)
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	var created map[string]interface{}
+	json.Unmarshal(createW.Body.Bytes(), &created)
+	commentID := created["id"].(string)
+	originalAuthor := created["author"].(string)
+
+	// Try to update with a different author field
+	updateBody := newJSONBody(map[string]string{"content": "Still updated", "author": "hacker"})
+	updateReq := httptest.NewRequest("PUT", "/api/tasks/"+taskID+"/comments/"+commentID, updateBody)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.AddCookie(cookie)
+	updateW := httptest.NewRecorder()
+	router.ServeHTTP(updateW, updateReq)
+
+	var updated map[string]interface{}
+	json.Unmarshal(updateW.Body.Bytes(), &updated)
+	// Author must NOT be changed by the request body
+	if updated["author"] != originalAuthor {
+		t.Errorf("author was overwritten by request body: was %s, got %s", originalAuthor, updated["author"])
+	}
+}
+
+func TestCommentHandler_Delete_Unauthenticated(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	req := httptest.NewRequest("DELETE", "/api/tasks/t1/comments/c1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestCommentHandler_Delete_NotFound(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "grace", "passw555")
+	createTaskWithAuth(t, router, cookie, "Task for Delete")
+
+	req := httptest.NewRequest("DELETE", "/api/tasks/fake-task/comments/fake-comment", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCommentHandler_Delete_Success(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie := registerAndLogin(t, router, "henry", "passw666")
+	taskID := createTaskWithAuth(t, router, cookie, "Task for Delete")
+
+	// Create comment
+	createBody := newJSONBody(map[string]string{"content": "To be deleted"})
+	createReq := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", createBody)
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.AddCookie(cookie)
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	var created map[string]interface{}
+	json.Unmarshal(createW.Body.Bytes(), &created)
+	commentID := created["id"].(string)
+
+	// Delete it
+	delReq := httptest.NewRequest("DELETE", "/api/tasks/"+taskID+"/comments/"+commentID, nil)
+	delReq.AddCookie(cookie)
+	delW := httptest.NewRecorder()
+	router.ServeHTTP(delW, delReq)
+
+	if delW.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d: %s", delW.Code, delW.Body.String())
+	}
+
+	// Verify it's gone
+	listReq := httptest.NewRequest("GET", "/api/tasks/"+taskID+"/comments", nil)
+	listReq.AddCookie(cookie)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	var listResp map[string]interface{}
+	json.Unmarshal(listW.Body.Bytes(), &listResp)
+	comments := listResp["comments"].([]interface{})
+	if len(comments) != 0 {
+		t.Errorf("expected 0 comments after delete, got %d", len(comments))
+	}
+}
+
+func TestCommentHandler_List_WithEnrichedUsernames(t *testing.T) {
+	router, _, _ := setupCommentRouter(t)
+	cookie1 := registerAndLogin(t, router, "iris", "passw777")
+	cookie2 := registerAndLogin(t, router, "jack", "passw888")
+	taskID := createTaskWithAuth(t, router, cookie1, "Task for Enrichment")
+
+	// Comment from user 1
+	body1 := newJSONBody(map[string]string{"content": "First comment"})
+	req1 := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	req1.AddCookie(cookie1)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	// Comment from user 2
+	body2 := newJSONBody(map[string]string{"content": "Second comment"})
+	req2 := httptest.NewRequest("POST", "/api/tasks/"+taskID+"/comments", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	req2.AddCookie(cookie2)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	// List and verify usernames are populated
+	listReq := httptest.NewRequest("GET", "/api/tasks/"+taskID+"/comments", nil)
+	listReq.AddCookie(cookie1)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+
+	var resp map[string]interface{}
+	json.Unmarshal(listW.Body.Bytes(), &resp)
+	comments := resp["comments"].([]interface{})
+
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	for _, c := range comments {
+		comment := c.(map[string]interface{})
+		if comment["author_username"] == nil || comment["author_username"] == "" {
+			t.Errorf("author_username should be populated, got: %v", comment["author_username"])
+		}
+		if comment["author"] == nil || comment["author"] == "" {
+			t.Error("author should be set")
+		}
+	}
+}
