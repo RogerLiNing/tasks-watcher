@@ -317,7 +317,9 @@ func (db *DB) GetSubtaskPositions(parentID string) (map[string]int, error) {
 	for rows.Next() {
 		var cid string
 		var pos int
-		rows.Scan(&cid, &pos)
+		if err := rows.Scan(&cid, &pos); err != nil {
+			return nil, fmt.Errorf("failed to scan subtask position: %w", err)
+		}
 		m[cid] = pos
 	}
 	return m, rows.Err()

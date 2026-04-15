@@ -86,7 +86,9 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Position > 0 {
-			h.db.SetSubtaskPosition(parentID, req.ChildID, req.Position)
+			if err := h.db.SetSubtaskPosition(parentID, req.ChildID, req.Position); err != nil {
+				log.Printf("SetSubtaskPosition(%s, %s, %d) failed: %v", parentID, req.ChildID, req.Position, err)
+			}
 		}
 		BroadcastTaskEvent(h.sse, models.EventSubtaskAdded, map[string]interface{}{
 			"parent_id": parentID,
@@ -160,7 +162,9 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Position > 0 {
-		h.db.SetSubtaskPosition(parentID, t.ID, req.Position)
+		if err := h.db.SetSubtaskPosition(parentID, t.ID, req.Position); err != nil {
+			log.Printf("SetSubtaskPosition(%s, %s, %d) failed: %v", parentID, t.ID, req.Position, err)
+		}
 	}
 
 	BroadcastTaskEvent(h.sse, models.EventSubtaskAdded, map[string]interface{}{

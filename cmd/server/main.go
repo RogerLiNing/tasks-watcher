@@ -92,7 +92,8 @@ func main() {
 	apiRouter.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
 		data, err := database.ExportAll()
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			log.Printf("export failed: %v", err)
+			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
