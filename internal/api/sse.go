@@ -20,17 +20,24 @@ func NewSSEHandler(apiKey string) *SSEHandler {
 }
 
 func (s *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Authenticate via query param (SSE can't use headers mid-stream)
-	key := r.URL.Query().Get("api_key")
-	if key == "" {
-		auth := r.Header.Get("Authorization")
-		if strings.HasPrefix(auth, "Bearer ") {
-			key = strings.TrimPrefix(auth, "Bearer ")
+	// If request passed through AuthMiddleware, trust its session or CLI auth.
+	// This handles both web UI (session cookie → ContextKeyUserID) and
+	// CLI (?api_key= → ContextKeyIsCLI). Direct callers bypassing the
+	// middleware still need to provide a valid API key.
+	if r.Context().Value(ContextKeyUserID) != nil || r.Context().Value(ContextKeyIsCLI) != nil {
+		// Authenticated via middleware — pass through
+	} else {
+		key := r.URL.Query().Get("api_key")
+		if key == "" {
+			auth := r.Header.Get("Authorization")
+			if strings.HasPrefix(auth, "Bearer ") {
+				key = strings.TrimPrefix(auth, "Bearer ")
+			}
 		}
-	}
-	if key != s.apiKey {
-		http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
-		return
+		if key != s.apiKey {
+			http.Error(w, `{"error":"invalid API key"}`, http.StatusUnauthorized)
+			return
+		}
 	}
 
 	// Set SSE headers

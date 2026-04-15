@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rogerrlee/tasks-watcher/internal/config"
@@ -1540,6 +1542,131 @@ func TestBroadcastTaskEvent_NonNilSSE_DoesNotPanic(t *testing.T) {
 	// which httptest cannot produce (context never cancels), so we verify the call
 	// does not panic and returns cleanly.
 	BroadcastTaskEvent(sse, "task.created", &models.Task{ID: "test", Title: "test"})
+}
+
+func TestSSEHandler_MiddlewareSessionAuth(t *testing.T) {
+	// Full chain: auth middleware (session cookie) → SSE handler
+	// This is the exact path the web UI uses.
+	database := setupTaskTestDB(t)
+	jwtSecret := "sse-test-secret"
+	auth := NewAuthMiddleware(&config.Config{APIKey: "test-key", JWTSecret: jwtSecret}, database)
+	authAPI := NewAuthAPIHandler(database, jwtSecret)
+	sse := NewSSEHandler("test-key")
+
+	router := mux.NewRouter()
+	apiRouter := router.PathPrefix("/api").Subrouter()
+	apiRouter.Use(auth.Authenticate)
+	authAPI.Register(apiRouter)
+	apiRouter.HandleFunc("/events", sse.ServeHTTP).Methods("GET")
+
+	// Register user and get session cookie
+	regBody := newJSONBody(map[string]string{"username": "ssetest", "password": "testpass123"})
+	regReq := httptest.NewRequest("POST", "/api/auth/register", regBody)
+	regReq.Header.Set("Content-Type", "application/json")
+	regW := httptest.NewRecorder()
+	router.ServeHTTP(regW, regReq)
+
+	loginBody := newJSONBody(map[string]string{"username": "ssetest", "password": "testpass123"})
+	loginReq := httptest.NewRequest("POST", "/api/auth/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+
+	var cookie *http.Cookie
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == "session_token" {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatal("no session_token cookie returned")
+	}
+
+	// SSE request with session cookie — no API key needed.
+	// Use a pre-cancelled context so the handler exits after the event loop.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	sseReq := httptest.NewRequest("GET", "/api/events", nil).WithContext(ctx)
+	sseReq.AddCookie(cookie)
+	sseW := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		router.ServeHTTP(sseW, sseReq)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		if sseW.Code == http.StatusUnauthorized {
+			t.Errorf("middleware rejected valid session cookie: %s", sseW.Body.String())
+		} else if ct := sseW.Header().Get("Content-Type"); ct == "text/event-stream" {
+			t.Log("SSE handler accepted session cookie auth — fix verified")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler blocked; session auth may not be working")
+	}
+}
+
+func TestSSEHandler_MiddlewareCLIAuth(t *testing.T) {
+	// Full chain: auth middleware (?api_key=) → SSE handler
+	database := setupTaskTestDB(t)
+	auth := NewAuthMiddleware(&config.Config{APIKey: "test-key"}, database)
+	sse := NewSSEHandler("test-key")
+
+	router := mux.NewRouter()
+	apiRouter := router.PathPrefix("/api").Subrouter()
+	apiRouter.Use(auth.Authenticate)
+	apiRouter.HandleFunc("/events", sse.ServeHTTP).Methods("GET")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest("GET", "/api/events?api_key=test-key", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		router.ServeHTTP(rec, req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		if rec.Code == http.StatusUnauthorized {
+			t.Errorf("middleware rejected valid API key: %s", rec.Body.String())
+		} else {
+			t.Log("SSE handler accepted API key auth via middleware")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler blocked")
+	}
+}
+
+func TestSSEHandler_DirectAuth_NoCredentials(t *testing.T) {
+	sse := NewSSEHandler("test-api-key")
+
+	req := httptest.NewRequest("GET", "/events", nil) // no context, no API key
+	w := httptest.NewRecorder()
+	sse.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for missing credentials, got: %d", w.Code)
+	}
+}
+
+func TestSSEHandler_DirectAuth_InvalidKey(t *testing.T) {
+	sse := NewSSEHandler("test-api-key")
+
+	req := httptest.NewRequest("GET", "/events?api_key=wrong-key", nil)
+	w := httptest.NewRecorder()
+	sse.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for invalid API key, got: %d", w.Code)
+	}
 }
 
 // --- ColumnHandler tests ---
