@@ -863,3 +863,25 @@ func TestMacosNotification_OnDarwin(t *testing.T) {
 	// but the function should handle it gracefully.
 	d.macosNotification("test body", "test title")
 }
+
+func TestShellEscape(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"hello", "hello"},
+		{`quote"test`, `quote\"test`},
+		{`back\slash`, `back\\slash`},
+		{`both "and \ back`, `both \"and \\ back`},
+		{"", ""},
+		{`"`, `\"`},
+		{`\`, `\\`},
+		{`\"`, `\\\"`},
+	}
+	for _, tc := range tests {
+		got := shellEscape(tc.input)
+		if got != tc.expected {
+			t.Errorf("shellEscape(%q) = %q; want %q", tc.input, got, tc.expected)
+		}
+	}
+}

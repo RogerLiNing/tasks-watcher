@@ -122,6 +122,31 @@ func TestTaskHandler_Create_TitleRequired(t *testing.T) {
 	}
 }
 
+func TestTaskHandler_Create_TitleTooLong(t *testing.T) {
+	router, _ := newTestTaskRouter(t)
+
+	longTitle := make([]byte, 501)
+	for i := range longTitle {
+		longTitle[i] = 'a'
+	}
+	body := map[string]interface{}{"title": string(longTitle)}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest("POST", "/tasks", bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if err, ok := resp["error"].(string); !ok || err != "title must be 500 characters or fewer" {
+		t.Errorf("expected 'title must be 500 characters or fewer', got %q", err)
+	}
+}
+
 func TestTaskHandler_Create_Success(t *testing.T) {
 	router, _ := newTestTaskRouter(t)
 

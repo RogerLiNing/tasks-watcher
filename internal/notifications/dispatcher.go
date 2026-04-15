@@ -16,6 +16,13 @@ import (
 	"github.com/rogerrlee/tasks-watcher/internal/models"
 )
 
+// shellEscape escapes double quotes and backslashes for safe embedding in osascript strings.
+func shellEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 type Dispatcher struct {
 	db  *db.DB
 	sse interface{ Broadcast(models.SSEEvent) }
@@ -88,7 +95,7 @@ func (d *Dispatcher) macosNotification(body, title string) {
 	if runtime.GOOS != "darwin" {
 		return
 	}
-	script := fmt.Sprintf(`display notification "%s" with title "Tasks Watcher: %s"`, body, title)
+	script := fmt.Sprintf(`display notification "%s" with title "Tasks Watcher: %s"`, shellEscape(body), shellEscape(title))
 	cmd := exec.Command("osascript", "-e", script)
 	if err := cmd.Run(); err != nil {
 		log.Printf("[notify] macOS notification failed: %v", err)

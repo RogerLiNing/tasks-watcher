@@ -111,6 +111,10 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"title is required"}`, http.StatusBadRequest)
 		return
 	}
+	if len(req.Title) > 500 {
+		http.Error(w, `{"error":"title must be 500 characters or fewer"}`, http.StatusBadRequest)
+		return
+	}
 
 	// Resolve project
 	projectID := req.ProjectID
