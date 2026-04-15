@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -413,7 +414,16 @@ func (c *Client) updateStatus(args map[string]interface{}, status, reason string
 	}
 
 	var task Task
-	json.Unmarshal(data, &task)
+	if err := json.Unmarshal(data, &task); err != nil {
+		log.Printf("UpdateTaskStatus: failed to unmarshal response: %v", err)
+	}
+
+	var idPrefix string
+	if task.ID != "" && len(task.ID) >= 8 {
+		idPrefix = task.ID[:8]
+	} else {
+		idPrefix = "(no-id)"
+	}
 
 	icon := "✅"
 	msg := status
@@ -428,7 +438,7 @@ func (c *Client) updateStatus(args map[string]interface{}, status, reason string
 		msg = "cancelled"
 	}
 
-	text := fmt.Sprintf("%s Task %s: [%s] %s", icon, msg, task.ID[:8], task.Title)
+	text := fmt.Sprintf("%s Task %s: [%s] %s", icon, msg, idPrefix, task.Title)
 	if reason != "" {
 		text += fmt.Sprintf("\nReason: %s", reason)
 	}
@@ -747,7 +757,9 @@ func (c *Client) DepList(args map[string]interface{}) (*mcp.ToolsCallResult, err
 			Status string `json:"status"`
 		} `json:"blockers"`
 	}
-	json.Unmarshal(blockData, &blockResult)
+	if err := json.Unmarshal(blockData, &blockResult); err != nil {
+		log.Printf("GetTask: failed to unmarshal blockers: %v", err)
+	}
 	sb.WriteString(fmt.Sprintf("Blocked by (%d):\n", len(blockResult.Blockers)))
 	if len(blockResult.Blockers) == 0 {
 		sb.WriteString("  (none)\n")
@@ -771,13 +783,19 @@ func (c *Client) DepList(args map[string]interface{}) (*mcp.ToolsCallResult, err
 			Status string `json:"status"`
 		} `json:"dependents"`
 	}
-	json.Unmarshal(depData, &depResult)
+	if err := json.Unmarshal(depData, &depResult); err != nil {
+		log.Printf("GetTask: failed to unmarshal dependents: %v", err)
+	}
 	sb.WriteString(fmt.Sprintf("\nBlocking (%d):\n", len(depResult.Dependents)))
 	if len(depResult.Dependents) == 0 {
 		sb.WriteString("  (none)")
 	}
 	for _, d := range depResult.Dependents {
-		sb.WriteString(fmt.Sprintf("  [%s] %s [%s]\n", d.Status, d.Title, d.ID[:8]))
+		idPrefix := d.ID
+		if len(idPrefix) > 8 {
+			idPrefix = idPrefix[:8]
+		}
+		sb.WriteString(fmt.Sprintf("  [%s] %s [%s]\n", d.Status, d.Title, idPrefix))
 	}
 
 	return &mcp.ToolsCallResult{
@@ -802,21 +820,32 @@ func (c *Client) DepCheck(args map[string]interface{}) (*mcp.ToolsCallResult, er
 	var result struct {
 		CanStart bool `json:"can_start"`
 	}
-	json.Unmarshal(data, &result)
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("DepCheck: failed to unmarshal can-start response: %v", err)
+		// Proceed with default (false) — will show as blocked with no detail
+	}
+
+	var idPrefix string
+	if len(taskID) >= 8 {
+		idPrefix = taskID[:8]
+	} else {
+		idPrefix = taskID
+	}
 
 	if result.CanStart {
 		return &mcp.ToolsCallResult{
-			Content: []mcp.ContentBlock{{Type: "text", Text: fmt.Sprintf("✅ Task [%s] can start — no blockers pending", taskID[:8])}},
+			Content: []mcp.ContentBlock{{Type: "text", Text: fmt.Sprintf("✅ Task [%s] can start — no blockers pending", idPrefix)}},
 		}, nil
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("🔒 Task [%s] is blocked:\n", taskID[:8]))
+	sb.WriteString(fmt.Sprintf("🔒 Task [%s] is blocked:\n", idPrefix))
 
 	// Try to extract blocker info from can-start response
 	var fullResult map[string]interface{}
-	json.Unmarshal(data, &fullResult)
-	if blockers, ok := fullResult["blockers"].([]interface{}); ok && len(blockers) > 0 {
+	if err := json.Unmarshal(data, &fullResult); err != nil {
+		log.Printf("DepCheck: failed to unmarshal full response: %v", err)
+	} else if blockers, ok := fullResult["blockers"].([]interface{}); ok && len(blockers) > 0 {
 		sb.WriteString("  Blocked by incomplete tasks:\n")
 		for _, b := range blockers {
 			sb.WriteString(fmt.Sprintf("    - %v\n", b))

@@ -54,11 +54,16 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to get API key: %w", err)
 	}
 
+	jwtSecret, err := loadOrCreateJWTSecret(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get JWT secret: %w", err)
+	}
+
 	return &Config{
 		DBPath:     dbPath,
 		Port:       port,
 		APIKey:     apiKey,
-		JWTSecret:  loadOrCreateJWTSecret(dataDir),
+		JWTSecret:  jwtSecret,
 		Notify:     notify == "true",
 		DataDir:    dataDir,
 		WebhookDir: filepath.Join(dataDir, "webhooks"),
@@ -111,17 +116,19 @@ func RegenerateAPIKey(dataDir string) (string, error) {
 	return key, nil
 }
 
-func loadOrCreateJWTSecret(dataDir string) string {
+func loadOrCreateJWTSecret(dataDir string) (string, error) {
 	secretPath := filepath.Join(dataDir, "jwt.secret")
 	if data, err := os.ReadFile(secretPath); err == nil && len(data) >= 32 {
-		return strings.TrimSpace(string(data))
+		return strings.TrimSpace(string(data)), nil
 	}
 	// Generate a new secret
 	secretBytes := make([]byte, 32)
 	if _, err := rand.Read(secretBytes); err != nil {
-		panic("failed to generate JWT secret: " + err.Error())
+		return "", fmt.Errorf("failed to generate JWT secret: %w", err)
 	}
 	secret := hex.EncodeToString(secretBytes)
-	os.WriteFile(secretPath, []byte(secret), 0600)
-	return secret
+	if err := os.WriteFile(secretPath, []byte(secret), 0600); err != nil {
+		return "", fmt.Errorf("failed to write JWT secret: %w", err)
+	}
+	return secret, nil
 }
