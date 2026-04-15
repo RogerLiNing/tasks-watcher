@@ -56,8 +56,7 @@ func (h *SubtaskHandler) ListSubtasks(w http.ResponseWriter, r *http.Request) {
 	}
 	posMap, err := h.db.GetSubtaskPositions(id)
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{"subtasks": tasks})
-		return
+		log.Printf("GetSubtaskPositions(%s) failed: %v", id, err)
 	}
 	type taskWithPos struct {
 		models.Task
@@ -82,6 +81,7 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		// Link an existing task as a subtask
 		child, err := h.db.AddSubtask(parentID, req.ChildID)
 		if err != nil {
+			log.Printf("AddSubtask(%s, %s) failed: %v", parentID, req.ChildID, err)
 			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
 			return
 		}
@@ -152,6 +152,7 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.db.AddSubtask(parentID, t.ID)
 	if err != nil {
+		log.Printf("AddSubtask(%s, %s) after create failed: %v", parentID, t.ID, err)
 		// Rollback task creation
 		h.db.DeleteTask(t.ID)
 		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
