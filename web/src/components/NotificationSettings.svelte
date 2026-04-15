@@ -257,7 +257,6 @@
   }
 
   .form-row--full { grid-column: 1 / -1; }
-  .form-row--sm { }
 
   .form-row label {
     font-size: 0.8rem;
