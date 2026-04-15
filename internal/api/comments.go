@@ -31,12 +31,10 @@ func (h *CommentHandler) Register(router *mux.Router) {
 }
 
 type createCommentReq struct {
-	Author  string `json:"author"`
 	Content string `json:"content"`
 }
 
 type updateCommentReq struct {
-	Author  string `json:"author"`
 	Content string `json:"content"`
 }
 
@@ -55,6 +53,13 @@ func (h *CommentHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	}
 	if comments == nil {
 		comments = []models.TaskComment{}
+	}
+
+	// Enrich with author usernames
+	for i := range comments {
+		if u, err := h.db.GetUserByID(comments[i].Author); err == nil && u != nil {
+			comments[i].AuthorUsername = u.Username
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -89,6 +94,11 @@ func (h *CommentHandler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		log.Printf("CreateComment(%s) failed: %v", taskID, err)
 		http.Error(w, `{"error":"failed to create comment"}`, http.StatusInternalServerError)
 		return
+	}
+
+	// Enrich with author username for the response
+	if u, err := h.db.GetUserByID(author); err == nil && u != nil {
+		c.AuthorUsername = u.Username
 	}
 
 	BroadcastTaskEvent(h.sse, models.EventCommentAdded, c)
@@ -127,6 +137,11 @@ func (h *CommentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 		log.Printf("UpdateComment(%s) failed: %v", commentID, err)
 		http.Error(w, `{"error":"failed to update comment"}`, http.StatusInternalServerError)
 		return
+	}
+
+	// Re-fetch for broadcast (enrich with username)
+	if u, err := h.db.GetUserByID(c.Author); err == nil && u != nil {
+		c.AuthorUsername = u.Username
 	}
 
 	BroadcastTaskEvent(h.sse, models.EventCommentUpdated, c)

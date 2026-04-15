@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { t } from '../lib/i18n/index.js';
-  import { api } from '../lib/api.js';
+  import { api, currentUser } from '../lib/api.js';
 
   export let task;
 
@@ -12,7 +12,6 @@
   let error = '';
 
   // New comment form
-  let newAuthor = '';
   let newContent = '';
   let posting = false;
 
@@ -20,9 +19,6 @@
   let editingId = '';
   let editContent = '';
   let saving = false;
-
-  // Current user (first assignee or empty string)
-  $: currentAuthor = (task.assignees && task.assignees[0]) || '';
 
   onMount(() => {
     loadComments();
@@ -45,11 +41,9 @@
     posting = true;
     error = '';
     try {
-      const author = newAuthor.trim() || currentAuthor;
-      const created = await api.createComment(task.id, { author, content: newContent.trim() });
+      const created = await api.createComment(task.id, { content: newContent.trim() });
       comments = [...comments, created];
       newContent = '';
-      newAuthor = '';
       dispatch('refresh');
     } catch (e) {
       error = e.message;
@@ -73,7 +67,6 @@
     error = '';
     try {
       const updated = await api.updateComment(task.id, comment.id, {
-        author: comment.author,
         content: editContent.trim(),
       });
       comments = comments.map(c => c.id === updated.id ? updated : c);
@@ -108,7 +101,7 @@
   }
 
   function isOwnComment(comment) {
-    return currentAuthor && comment.author === currentAuthor;
+    return $currentUser && comment.author === $currentUser.id;
   }
 </script>
 
@@ -125,7 +118,7 @@
         {#each comments as comment (comment.id)}
           <div class="comment">
             <div class="comment-header">
-              <span class="comment-author">{comment.author || '—'}</span>
+              <span class="comment-author">{comment.author_username || comment.author || '—'}</span>
               <span class="comment-time">{formatTime(comment.created_at)}</span>
               {#if isOwnComment(comment)}
                 <button class="icon-btn-sm" on:click={() => startEdit(comment)} title={$t('commentPanel.edit')}>✏</button>
@@ -156,13 +149,6 @@
     {/if}
 
     <div class="add-form">
-      {#if !currentAuthor}
-        <input
-          class="author-input"
-          bind:value={newAuthor}
-          placeholder={$t('commentPanel.authorPlaceholder')}
-        />
-      {/if}
       <textarea
         class="comment-textarea"
         bind:value={newContent}
@@ -298,17 +284,6 @@
     border-top: 1px solid #e5e5ea;
     padding-top: 0.75rem;
   }
-
-  .author-input {
-    width: 100%;
-    padding: 0.4rem 0.6rem;
-    border: 1px solid #d2d2d7;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    outline: none;
-  }
-
-  .author-input:focus { border-color: #0071e3; }
 
   .comment-textarea {
     width: 100%;

@@ -36,12 +36,13 @@ type CanStartResult struct {
 
 // TaskComment represents a comment on a task.
 type TaskComment struct {
-	ID        string `json:"id"`
-	TaskID    string `json:"task_id"`
-	Author    string `json:"author"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID            string `json:"id"`
+	TaskID        string `json:"task_id"`
+	Author        string `json:"author"`
+	AuthorUsername string `json:"author_username,omitempty"`
+	Content       string `json:"content"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
 // Event types

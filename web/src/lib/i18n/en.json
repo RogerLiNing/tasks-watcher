@@ -234,8 +234,6 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "deleteConfirm": "Delete this comment?",
-    "editPlaceholder": "Edit your comment...",
-    "authorLabel": "Your name",
-    "authorPlaceholder": "Your name (e.g. alice, bob)"
+    "editPlaceholder": "Edit your comment..."
   }
 }
