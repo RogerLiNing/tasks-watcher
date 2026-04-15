@@ -185,7 +185,16 @@ func (s *Server) handleToolsCall(ctx context.Context, req mcp.JSONRPCRequest) mc
 		Arguments map[string]interface{} `json:"arguments,omitempty"`
 	}
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &params)
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return mcp.JSONRPCResponse{
+				JSONRPC: "2.0",
+				Error:   &mcp.RPCError{Code: -32700, Message: "parse error: " + err.Error()},
+				ID:      req.ID,
+			}
+		}
+	}
+	if params.Arguments == nil {
+		params.Arguments = make(map[string]interface{})
 	}
 
 	result, err := ExecuteTool(ctx, s.api, params.Name, params.Arguments)

@@ -114,7 +114,9 @@ func projectListCmd() *cobra.Command {
 				return err
 			}
 			var result map[string][]map[string]interface{}
-			json.Unmarshal(resp, &result)
+			if err := json.Unmarshal(resp, &result); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 			projects := result["projects"]
 			if len(projects) == 0 {
 				fmt.Println("No projects found.")

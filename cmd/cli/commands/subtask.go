@@ -133,11 +133,16 @@ func taskSubtaskListCmd() *cobra.Command {
 			}
 			subtasks := result["subtasks"]
 
-			parentResp, _ := apiRequest("GET", "/api/tasks/"+taskID, nil)
-			var parent map[string]interface{}
-			json.Unmarshal(parentResp, &parent)
-			parentTitle, _ := parent["title"].(string)
-
+			parentResp, err := apiRequest("GET", "/api/tasks/"+taskID, nil)
+			var parentTitle string
+			if err == nil {
+				var parent map[string]interface{}
+				if json.Unmarshal(parentResp, &parent) == nil {
+					if t, ok := parent["title"].(string); ok {
+						parentTitle = t
+					}
+				}
+			}
 			fmt.Printf("Parent: %s\n", parentTitle)
 			fmt.Printf("Subtasks (%d):\n", len(subtasks))
 			if len(subtasks) == 0 {
