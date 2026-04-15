@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -48,7 +49,8 @@ func (h *CommentHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 
 	comments, err := h.db.ListComments(taskID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("ListComments(%s) failed: %v", taskID, err)
+		http.Error(w, `{"error":"failed to list comments"}`, http.StatusInternalServerError)
 		return
 	}
 	if comments == nil {
@@ -72,13 +74,20 @@ func (h *CommentHandler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	author := GetUserID(r)
+	if author == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
 	c := &models.TaskComment{
 		TaskID:  taskID,
-		Author:  req.Author,
+		Author:  author,
 		Content: req.Content,
 	}
 	if err := h.db.CreateComment(c); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("CreateComment(%s) failed: %v", taskID, err)
+		http.Error(w, `{"error":"failed to create comment"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -103,7 +112,8 @@ func (h *CommentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 
 	c, err := h.db.GetComment(commentID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("GetComment(%s) failed: %v", commentID, err)
+		http.Error(w, `{"error":"failed to get comment"}`, http.StatusInternalServerError)
 		return
 	}
 	if c == nil {
@@ -111,10 +121,11 @@ func (h *CommentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.Author = req.Author
+	// Only content is updatable; author is preserved from creation.
 	c.Content = req.Content
 	if err := h.db.UpdateComment(c); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("UpdateComment(%s) failed: %v", commentID, err)
+		http.Error(w, `{"error":"failed to update comment"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -132,12 +143,14 @@ func (h *CommentHandler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.db.GetComment(commentID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("GetComment(%s) in DeleteComment failed: %v", commentID, err)
+		http.Error(w, `{"error":"failed to get comment"}`, http.StatusInternalServerError)
 		return
 	}
 
 	if err := h.db.DeleteComment(commentID); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("DeleteComment(%s) failed: %v", commentID, err)
+		http.Error(w, `{"error":"failed to delete comment"}`, http.StatusInternalServerError)
 		return
 	}
 

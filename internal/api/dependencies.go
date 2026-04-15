@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -26,7 +27,8 @@ func (h *DepHandler) ListBlockers(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	tasks, err := h.db.GetDependencyTasks(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if tasks == nil {
@@ -39,7 +41,8 @@ func (h *DepHandler) ListDependents(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	tasks, err := h.db.GetDependentTasks(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if tasks == nil {
@@ -74,7 +77,8 @@ func (h *DepHandler) RemoveBlocker(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	blockerID := mux.Vars(r)["blockerId"]
 	if err := h.db.RemoveDependency(id, blockerID); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventDependencyRemoved, map[string]string{
@@ -88,7 +92,8 @@ func (h *DepHandler) CanStart(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	result, err := h.db.CanStartTask(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	json.NewEncoder(w).Encode(result)

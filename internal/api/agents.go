@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -28,7 +29,8 @@ type AgentOverview struct {
 func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 	agents, err := h.db.ListAgents()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if agents == nil {
@@ -40,7 +42,8 @@ func (h *AgentHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *AgentHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	tasks, _, err := h.db.ListTasks("", "", "", "", "", 0, 0)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 

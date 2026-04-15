@@ -118,7 +118,9 @@ func loadOrCreateJWTSecret(dataDir string) string {
 	}
 	// Generate a new secret
 	secretBytes := make([]byte, 32)
-	rand.Read(secretBytes)
+	if _, err := rand.Read(secretBytes); err != nil {
+		panic("failed to generate JWT secret: " + err.Error())
+	}
 	secret := hex.EncodeToString(secretBytes)
 	os.WriteFile(secretPath, []byte(secret), 0600)
 	return secret

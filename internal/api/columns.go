@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -38,7 +39,8 @@ type updateColumnReq struct {
 func (h *ColumnHandler) List(w http.ResponseWriter, r *http.Request) {
 	cols, err := h.db.ListColumns()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"columns": cols})
@@ -84,7 +86,8 @@ func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Position: position,
 	}
 	if err := h.db.CreateColumn(c); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventColumnCreated, c)
@@ -100,7 +103,8 @@ func (h *ColumnHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, err := h.db.ListColumns()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	var col models.TaskColumn
@@ -124,7 +128,8 @@ func (h *ColumnHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	col.Position = req.Position
 	if err := h.db.UpdateColumn(&col); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventColumnUpdated, &col)
@@ -136,7 +141,8 @@ func (h *ColumnHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Check column exists
 	cols, err := h.db.ListColumns()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	found := false
@@ -151,7 +157,8 @@ func (h *ColumnHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.db.DeleteColumn(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventColumnDeleted, map[string]string{"id": id})

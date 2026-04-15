@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -27,7 +28,8 @@ type CreateProjectRequest struct {
 func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.db.ListProjects()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if projects == nil {
@@ -40,7 +42,8 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	p, err := h.db.GetProject(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if p == nil {
@@ -64,7 +67,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Get or auto-create
 	p, err := h.db.GetOrCreateProject(req.Name)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 
@@ -72,7 +76,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.RepoPath != "" && p.RepoPath == "" {
 		p.RepoPath = req.RepoPath
 		if err := h.db.UpdateProject(p); err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 			return
 		}
 	}
@@ -91,7 +96,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	p, err := h.db.GetProject(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if p == nil {
@@ -110,7 +116,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.UpdateProject(p); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 
@@ -121,7 +128,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	if err := h.db.DeleteProject(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventProjectDeleted, map[string]string{"id": id})
@@ -138,7 +146,8 @@ func (h *ProjectHandler) GetOrCreateByRepo(w http.ResponseWriter, r *http.Reques
 	}
 	p, err := h.db.GetOrCreateByRepoPath(repoPath)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	json.NewEncoder(w).Encode(p)

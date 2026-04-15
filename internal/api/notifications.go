@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -20,7 +21,8 @@ func NewNotificationHandler(database *db.DB) *NotificationHandler {
 func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	notifs, err := h.db.ListNotifications(100)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if notifs == nil {
@@ -36,7 +38,8 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	if err := h.db.MarkNotificationRead(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -44,7 +47,8 @@ func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 
 func (h *NotificationHandler) MarkAllRead(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.MarkAllNotificationsRead(); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -52,7 +56,8 @@ func (h *NotificationHandler) MarkAllRead(w http.ResponseWriter, r *http.Request
 
 func (h *NotificationHandler) Clear(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.ClearNotifications(); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

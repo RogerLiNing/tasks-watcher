@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -75,7 +76,8 @@ func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	tasks, total, err := h.db.ListTasks(projectID, status, assignee, search, source, limit, offset)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("ListTasks failed: %v", err)
+		http.Error(w, `{"error":"failed to list tasks"}`, http.StatusInternalServerError)
 		return
 	}
 	if tasks == nil {
@@ -88,7 +90,8 @@ func (h *TaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	t, err := h.db.GetTask(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("GetTask(%s) failed: %v", id, err)
+		http.Error(w, `{"error":"failed to get task"}`, http.StatusInternalServerError)
 		return
 	}
 	if t == nil {
@@ -114,7 +117,8 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if projectID == "" && req.ProjectName != "" {
 		p, err := h.db.GetOrCreateProject(req.ProjectName)
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			log.Printf("GetOrCreateProject(%s) failed: %v", req.ProjectName, err)
+			http.Error(w, `{"error":"failed to create project"}`, http.StatusInternalServerError)
 			return
 		}
 		projectID = p.ID
@@ -123,7 +127,8 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		// Auto-associate project by git repo path
 		p, err := h.db.GetOrCreateByRepoPath(req.RepoPath)
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			log.Printf("GetOrCreateByRepoPath(%s) failed: %v", req.RepoPath, err)
+			http.Error(w, `{"error":"failed to create project"}`, http.StatusInternalServerError)
 			return
 		}
 		projectID = p.ID
@@ -132,7 +137,8 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		// Use or create "default" project
 		p, err := h.db.GetOrCreateProject("default")
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			log.Printf("GetOrCreateProject(default) failed: %v", err)
+			http.Error(w, `{"error":"failed to create project"}`, http.StatusInternalServerError)
 			return
 		}
 		projectID = p.ID
@@ -179,7 +185,8 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.CreateTask(t); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("CreateTask failed: %v", err)
+		http.Error(w, `{"error":"failed to create task"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -202,7 +209,8 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	t, err := h.db.GetTask(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("GetTask(%s) in Update failed: %v", id, err)
+		http.Error(w, `{"error":"failed to get task"}`, http.StatusInternalServerError)
 		return
 	}
 	if t == nil {
@@ -239,7 +247,8 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.UpdateTask(t); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("UpdateTask(%s) failed: %v", id, err)
+		http.Error(w, `{"error":"failed to update task"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -262,7 +271,8 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	t, err := h.db.GetTask(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("GetTask(%s) in UpdateStatus failed: %v", id, err)
+		http.Error(w, `{"error":"failed to get task"}`, http.StatusInternalServerError)
 		return
 	}
 	if t == nil {
@@ -274,7 +284,7 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	from := t.Status
 	to := models.TaskStatus(req.Status)
 	if err := validateTransition(from, to); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"invalid status transition"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -282,7 +292,8 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	if to == models.TaskStatusInProgress {
 		result, err := h.db.CanStartTask(id)
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			log.Printf("CanStartTask(%s) failed: %v", id, err)
+			http.Error(w, `{"error":"failed to check blockers"}`, http.StatusInternalServerError)
 			return
 		}
 		if !result.CanStart {
@@ -316,7 +327,8 @@ func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.UpdateTask(t); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("UpdateTask(%s) in UpdateStatus failed: %v", id, err)
+		http.Error(w, `{"error":"failed to update task"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -394,7 +406,8 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 func (h *TaskHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	if err := h.db.HeartbeatTask(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("HeartbeatTask(%s) failed: %v", id, err)
+		http.Error(w, `{"error":"failed to heartbeat task"}`, http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -403,7 +416,8 @@ func (h *TaskHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 func (h *TaskHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	if err := h.db.DeleteTask(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("DeleteTask(%s) failed: %v", id, err)
+		http.Error(w, `{"error":"failed to delete task"}`, http.StatusInternalServerError)
 		return
 	}
 	BroadcastTaskEvent(h.sse, "task.deleted", map[string]string{"id": id})

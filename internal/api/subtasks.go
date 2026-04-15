@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -46,7 +47,8 @@ func (h *SubtaskHandler) ListSubtasks(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	tasks, err := h.db.GetSubtaskTasks(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if tasks == nil {
@@ -80,7 +82,7 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		// Link an existing task as a subtask
 		child, err := h.db.AddSubtask(parentID, req.ChildID)
 		if err != nil {
-			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
 			return
 		}
 		if req.Position > 0 {
@@ -103,7 +105,8 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 	// Use parent's project
 	parent, err := h.db.GetTask(parentID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if parent == nil {
@@ -142,7 +145,8 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 		Source:      "manual",
 	}
 	if err := h.db.CreateTask(t); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 
@@ -150,7 +154,7 @@ func (h *SubtaskHandler) AddSubtask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Rollback task creation
 		h.db.DeleteTask(t.ID)
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -169,7 +173,8 @@ func (h *SubtaskHandler) RemoveSubtask(w http.ResponseWriter, r *http.Request) {
 	parentID := mux.Vars(r)["id"]
 	childID := mux.Vars(r)["childId"]
 	if err := h.db.RemoveSubtask(parentID, childID); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, models.EventSubtaskRemoved, map[string]string{
@@ -183,7 +188,8 @@ func (h *SubtaskHandler) GetParent(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	task, err := h.db.GetParentTask(id)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if task == nil {
@@ -203,7 +209,8 @@ func (h *SubtaskHandler) ReorderSubtask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.db.SetSubtaskPosition(parentID, childID, req.Position); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	BroadcastTaskEvent(h.sse, "task.subtask.reordered", map[string]string{

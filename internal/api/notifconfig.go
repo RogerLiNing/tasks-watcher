@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -26,7 +27,8 @@ type UpsertNotifConfigRequest struct {
 func (h *NotificationConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 	configs, err := h.db.ListNotificationConfigs()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if configs == nil {
@@ -39,7 +41,8 @@ func (h *NotificationConfigHandler) Get(w http.ResponseWriter, r *http.Request) 
 	notifType := mux.Vars(r)["type"]
 	c, err := h.db.GetNotificationConfig(notifType)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	if c == nil {
@@ -72,7 +75,8 @@ func (h *NotificationConfigHandler) Upsert(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.db.UpsertNotificationConfig(c); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 

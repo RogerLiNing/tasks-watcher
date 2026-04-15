@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -26,7 +27,8 @@ type CreateWebhookRequest struct {
 func (h *WebhookHandler) List(w http.ResponseWriter, r *http.Request) {
 	webhooks, err := h.db.ListWebhooks()
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	type webhookList struct {
@@ -58,7 +60,8 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Active: req.Active,
 	}
 	if err := h.db.CreateWebhook(wh); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	json.NewEncoder(w).Encode(wh)
@@ -67,7 +70,8 @@ func (h *WebhookHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *WebhookHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	if err := h.db.DeleteWebhook(id); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		log.Printf("handler error: %v", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
