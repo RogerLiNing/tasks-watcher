@@ -2,6 +2,8 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rogerrlee/tasks-watcher/internal/models"
@@ -42,6 +44,38 @@ func (db *DB) GetUserByID(id string) (*models.User, error) {
 		return nil, nil
 	}
 	return u, err
+}
+
+// GetUsersByIDs retrieves multiple users by their IDs in a single query.
+func (db *DB) GetUsersByIDs(ids []string) (map[string]*models.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(
+		`SELECT id, username, password_hash, created_at FROM users WHERE id IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*models.User)
+	for rows.Next() {
+		u := &models.User{}
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[u.ID] = u
+	}
+	return result, rows.Err()
 }
 
 // CreateSession creates a new session.

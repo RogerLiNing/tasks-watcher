@@ -55,11 +55,19 @@ func (h *CommentHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		comments = []models.TaskComment{}
 	}
 
-	// Enrich with author usernames
-	for i := range comments {
-		if u, err := h.db.GetUserByID(comments[i].Author); err == nil && u != nil {
-			comments[i].AuthorUsername = u.Username
+	// Enrich with author usernames in a single batch query
+	authorIDs := make([]string, len(comments))
+	for i, c := range comments {
+		authorIDs[i] = c.Author
+	}
+	if users, err := h.db.GetUsersByIDs(authorIDs); err == nil {
+		for i := range comments {
+			if u, ok := users[comments[i].Author]; ok {
+				comments[i].AuthorUsername = u.Username
+			}
 		}
+	} else {
+		log.Printf("ListComments: GetUsersByIDs failed: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

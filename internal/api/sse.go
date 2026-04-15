@@ -86,14 +86,20 @@ func (s *SSEHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SSEHandler) Broadcast(event models.SSEEvent) {
+	// Snapshot channels under read lock, then send outside the lock
+	// to avoid holding the lock while sending (which could block).
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+	channels := make([]chan models.SSEEvent, 0, len(s.clients))
 	for ch := range s.clients {
+		channels = append(channels, ch)
+	}
+	s.mu.RUnlock()
+
+	for _, ch := range channels {
 		select {
 		case ch <- event:
 		default:
-			// Drop if channel is full
+			// Drop if channel buffer is full (slow consumer)
 		}
 	}
 }

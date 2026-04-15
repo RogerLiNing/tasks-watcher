@@ -1,5 +1,11 @@
 import { sseConnected } from './stores.js';
 
+const DEBUG = import.meta.env.VITE_DEBUG === 'true';
+
+function debug(...args) {
+  if (DEBUG) console.log('[SSE]', ...args);
+}
+
 let es = null;
 let reconnectTimer = null;
 let reconnectDelay = 1000;
@@ -12,7 +18,7 @@ export function connectSSE() {
 
   // Browser automatically sends HttpOnly session cookie
   const url = '/api/events';
-  console.log('[SSE] Connecting to', url);
+  debug('Connecting to', url);
 
   try {
     es = new EventSource(url);
@@ -23,14 +29,14 @@ export function connectSSE() {
   }
 
   es.onopen = () => {
-    console.log('[SSE] Connected');
+    debug('Connected');
     sseConnected.set(true);
     reconnectDelay = 1000;
   };
 
   es.onmessage = (event) => {
     if (event.data === 'ping') return;
-    console.log('[SSE] Event:', event.data);
+    debug('Event:', event.data);
     try {
       const data = JSON.parse(event.data);
       listeners.forEach((fn) => fn(data));

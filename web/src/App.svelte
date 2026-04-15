@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { api } from './lib/api.js';
   import { connectSSE, disconnectSSE, onSSEEvent } from './lib/sse.js';
   import {
