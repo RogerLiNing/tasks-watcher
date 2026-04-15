@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/rogerrlee/tasks-watcher/internal/db"
@@ -65,7 +66,19 @@ func (h *DepHandler) AddBlocker(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := h.db.AddDependency(id, req.BlockerID)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		log.Printf("AddDependency(%s, %s) failed: %v", id, req.BlockerID, err)
+		// Pass through user-meaningful errors; log and return generic for internal errors.
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "not found"):
+			http.Error(w, `{"error":"`+msg+`"}`, http.StatusNotFound)
+		case strings.Contains(msg, "circular"):
+			http.Error(w, `{"error":"`+msg+`"}`, http.StatusBadRequest)
+		case strings.Contains(msg, "cannot depend on itself"):
+			http.Error(w, `{"error":"`+msg+`"}`, http.StatusBadRequest)
+		default:
+			http.Error(w, `{"error":"failed to add dependency"}`, http.StatusInternalServerError)
+		}
 		return
 	}
 

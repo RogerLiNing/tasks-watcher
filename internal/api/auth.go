@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -197,12 +198,14 @@ func (h *AuthAPIHandler) HandleRegister(w http.ResponseWriter, r *http.Request) 
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
+		log.Printf("HashPassword failed: %v", err)
 		http.Error(w, `{"error":"failed to hash password"}`, http.StatusInternalServerError)
 		return
 	}
 
 	u := &models.User{Username: req.Username, PasswordHash: hash}
 	if err := h.db.CreateUser(u); err != nil {
+		log.Printf("CreateUser(%s) failed: %v", req.Username, err)
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			http.Error(w, `{"error":"username already taken"}`, http.StatusConflict)
 			return
@@ -231,6 +234,7 @@ func (h *AuthAPIHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.db.GetUserByUsername(req.Username)
 	if err != nil {
+		log.Printf("GetUserByUsername(%s) failed: %v", req.Username, err)
 		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -243,10 +247,12 @@ func (h *AuthAPIHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	session, token, err := auth.GenerateSession(u.ID, h.jwtSecret)
 	if err != nil {
+		log.Printf("GenerateSession failed: %v", err)
 		http.Error(w, `{"error":"failed to create session"}`, http.StatusInternalServerError)
 		return
 	}
 	if err := h.db.CreateSession(session); err != nil {
+		log.Printf("CreateSession failed: %v", err)
 		http.Error(w, `{"error":"failed to save session"}`, http.StatusInternalServerError)
 		return
 	}

@@ -2537,9 +2537,9 @@ func TestDepHandler_AddBlocker_TaskNotFound(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	// Non-existent task: AddDependency returns error
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for non-existent task, got %d: %s", w.Code, w.Body.String())
+	// Non-existent task: AddDependency returns "not found" error → 404
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent task, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
