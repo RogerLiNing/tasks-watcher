@@ -135,7 +135,9 @@ func (a *AuthMiddleware) validateSessionToken(token string) (string, bool) {
 // GetUserID extracts the authenticated user ID from context.
 func GetUserID(r *http.Request) string {
 	if v := r.Context().Value(ContextKeyUserID); v != nil {
-		return v.(string)
+		if s, ok := v.(string); ok {
+			return s
+		}
 	}
 	return ""
 }
@@ -143,7 +145,9 @@ func GetUserID(r *http.Request) string {
 // GetIsCLI returns true if the request used CLI/Agent API key auth.
 func GetIsCLI(r *http.Request) bool {
 	if v := r.Context().Value(ContextKeyIsCLI); v != nil {
-		return v.(bool)
+		if b, ok := v.(bool); ok {
+			return b
+		}
 	}
 	return false
 }
