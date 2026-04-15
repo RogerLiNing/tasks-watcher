@@ -9,6 +9,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// toInt safely converts an interface{} to int, returning 0 on failure.
+func toInt(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
 func AgentsCommand() *cobra.Command {
 	agentsCmd := &cobra.Command{
 		Use:   "agents",
@@ -71,13 +88,16 @@ func agentsOverviewCmd() *cobra.Command {
 			fmt.Println("  " + strings.Repeat("─", 60))
 
 			for _, a := range agents {
-				agent, _ := a.(map[string]interface{})
+				agent, ok := a.(map[string]interface{})
+				if !ok {
+					continue
+				}
 				name := fmt.Sprintf("%s", agent["name"])
-				active := int(agent["active_tasks"].(float64))
-				pending := int(agent["pending_tasks"].(float64))
-				completed := int(agent["completed_tasks"].(float64))
-				failed := int(agent["failed_tasks"].(float64))
-				total := int(agent["total_tasks"].(float64))
+				active := toInt(agent["active_tasks"])
+				pending := toInt(agent["pending_tasks"])
+				completed := toInt(agent["completed_tasks"])
+				failed := toInt(agent["failed_tasks"])
+				total := toInt(agent["total_tasks"])
 
 				icon := "🤖"
 				if strings.Contains(name, "cursor") || strings.Contains(name, "Cursor") {
