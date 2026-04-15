@@ -108,7 +108,7 @@ func main() {
 	addr := ":" + cfg.Port
 	fmt.Printf("\n[Tasks Watcher] Server running at http://localhost:%s\n", cfg.Port)
 	fmt.Printf("[Tasks Watcher] Data directory: %s\n", cfg.DataDir)
-	fmt.Printf("[Tasks Watcher] API key: %s...\n\n", cfg.APIKey[:8])
+	fmt.Printf("[Tasks Watcher] API key: %s… [first 8 chars]\n\n", cfg.APIKey[:8])
 
 	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("Server error: %v", err)

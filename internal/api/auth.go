@@ -251,7 +251,7 @@ func (h *AuthAPIHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"user": map[string]interface{}{"id": u.ID, "username": u.Username},
@@ -289,7 +289,8 @@ func (h *AuthAPIHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func setSessionCookie(w http.ResponseWriter, token string) {
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    token,
@@ -297,7 +298,7 @@ func setSessionCookie(w http.ResponseWriter, token string) {
 		MaxAge:   60 * 60 * 24, // 24 hours
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   false, // set to true in production with HTTPS
+		Secure:   secure,
 	})
 }
 

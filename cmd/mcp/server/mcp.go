@@ -34,7 +34,7 @@ func (s *MultiServer) Listen(socketPath string) error {
 	if err != nil {
 		return fmt.Errorf("listen on unix socket %s: %w", socketPath, err)
 	}
-	if err := os.Chmod(socketPath, 0777); err != nil {
+	if err := os.Chmod(socketPath, 0770); err != nil {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 	s.listener = ln

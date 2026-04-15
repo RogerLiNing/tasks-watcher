@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rogerrlee/tasks-watcher/pkg/mcp"
 )
@@ -69,7 +70,7 @@ func New() (*Client, error) {
 	return &Client{
 		BaseURL:    serverURL,
 		APIKey:     apiKey,
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 

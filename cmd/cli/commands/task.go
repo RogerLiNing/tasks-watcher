@@ -405,48 +405,60 @@ func taskShowCmd() *cobra.Command {
 			}
 
 			// Subtasks
-			subResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/subtasks", nil)
-			var subResult map[string][]map[string]interface{}
-			if json.Unmarshal(subResp, &subResult) == nil {
-				subtasks := subResult["subtasks"]
-				fmt.Printf("\nSubtasks (%d):\n", len(subtasks))
-				if len(subtasks) == 0 {
-					fmt.Println("  (none)")
-				}
-				for _, s := range subtasks {
-					pos := 0
-					if p, ok := s["position"].(float64); ok {
-						pos = int(p)
+			subResp, err := apiRequest("GET", "/api/tasks/"+args[0]+"/subtasks", nil)
+			if err != nil {
+				fmt.Printf("\nSubtasks: (failed to load: %v)\n", err)
+			} else {
+				var subResult map[string][]map[string]interface{}
+				if json.Unmarshal(subResp, &subResult) == nil {
+					subtasks := subResult["subtasks"]
+					fmt.Printf("\nSubtasks (%d):\n", len(subtasks))
+					if len(subtasks) == 0 {
+						fmt.Println("  (none)")
 					}
-					fmt.Printf("  [%d] [%s] %s\n", pos, s["status"], s["title"])
+					for _, s := range subtasks {
+						pos := 0
+						if p, ok := s["position"].(float64); ok {
+							pos = int(p)
+						}
+						fmt.Printf("  [%d] [%s] %s\n", pos, s["status"], s["title"])
+					}
 				}
 			}
 
 			// Blockers
-			blockResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/dependencies", nil)
-			var blockResult map[string][]map[string]interface{}
-			if json.Unmarshal(blockResp, &blockResult) == nil {
-				blockers := blockResult["blockers"]
-				fmt.Printf("\nBlocked by (%d):\n", len(blockers))
-				if len(blockers) == 0 {
-					fmt.Println("  (none)")
-				}
-				for _, b := range blockers {
-					fmt.Printf("  [%s] %s\n", b["status"], b["title"])
+			blockResp, err := apiRequest("GET", "/api/tasks/"+args[0]+"/dependencies", nil)
+			if err != nil {
+				fmt.Printf("Blockers: (failed to load: %v)\n", err)
+			} else {
+				var blockResult map[string][]map[string]interface{}
+				if json.Unmarshal(blockResp, &blockResult) == nil {
+					blockers := blockResult["blockers"]
+					fmt.Printf("\nBlocked by (%d):\n", len(blockers))
+					if len(blockers) == 0 {
+						fmt.Println("  (none)")
+					}
+					for _, b := range blockers {
+						fmt.Printf("  [%s] %s\n", b["status"], b["title"])
+					}
 				}
 			}
 
 			// Dependents
-			depResp, _ := apiRequest("GET", "/api/tasks/"+args[0]+"/dependents", nil)
-			var depResult map[string][]map[string]interface{}
-			if json.Unmarshal(depResp, &depResult) == nil {
-				dependents := depResult["dependents"]
-				fmt.Printf("\nBlocking (%d):\n", len(dependents))
-				if len(dependents) == 0 {
-					fmt.Println("  (none)")
-				}
-				for _, d := range dependents {
-					fmt.Printf("  [%s] %s\n", d["status"], d["title"])
+			depResp, err := apiRequest("GET", "/api/tasks/"+args[0]+"/dependents", nil)
+			if err != nil {
+				fmt.Printf("Dependents: (failed to load: %v)\n", err)
+			} else {
+				var depResult map[string][]map[string]interface{}
+				if json.Unmarshal(depResp, &depResult) == nil {
+					dependents := depResult["dependents"]
+					fmt.Printf("\nBlocking (%d):\n", len(dependents))
+					if len(dependents) == 0 {
+						fmt.Println("  (none)")
+					}
+					for _, d := range dependents {
+						fmt.Printf("  [%s] %s\n", d["status"], d["title"])
+					}
 				}
 			}
 
