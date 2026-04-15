@@ -372,11 +372,15 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 		if err := h.db.UpdateTaskStatus(parentID, newStatus, ""); err != nil {
 			return
 		}
-		BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
-			"parent":       parent,
-			"child_id":     child.ID,
-			"child_status": child.Status,
-		})
+		// Re-fetch parent so broadcast sends the updated status, not stale data
+		updatedParent, _ := h.db.GetTask(parentID)
+		if updatedParent != nil {
+			BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
+				"parent":       updatedParent,
+				"child_id":     child.ID,
+				"child_status": child.Status,
+			})
+		}
 		return
 	}
 
@@ -395,12 +399,15 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 		return
 	}
 
-	// Broadcast parent status change
-	BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
-		"parent":       parent,
-		"child_id":     child.ID,
-		"child_status": child.Status,
-	})
+	// Broadcast parent status change — re-fetch so we send the updated status
+	updatedParent, _ := h.db.GetTask(parentID)
+	if updatedParent != nil {
+		BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
+			"parent":       updatedParent,
+			"child_id":     child.ID,
+			"child_status": child.Status,
+		})
+	}
 }
 
 func (h *TaskHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
