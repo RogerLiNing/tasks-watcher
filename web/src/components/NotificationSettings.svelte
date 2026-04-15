@@ -13,6 +13,7 @@
   let smtpPort = 587;
   let smtpUsername = '';
   let smtpPassword = '';
+  let passwordTouched = false; // only send password to server if user typed it
   let fromAddress = '';
   let toAddressesStr = '';
 
@@ -36,7 +37,8 @@
         smtpHost = ec.smtp_host || '';
         smtpPort = ec.smtp_port || 587;
         smtpUsername = ec.smtp_username || '';
-        smtpPassword = ec.smtp_password || '';
+        // Don't populate smtpPassword from API — only send if user typed it
+        smtpPassword = '';
         fromAddress = ec.from_address || '';
         toAddressesStr = (ec.to_addresses || []).join(', ');
       }
@@ -62,19 +64,24 @@
   async function saveEmail() {
     saving = true;
     const toAddresses = toAddressesStr.split(',').map(s => s.trim()).filter(Boolean);
+    const cfg = {
+      smtp_host: smtpHost,
+      smtp_port: smtpPort,
+      smtp_username: smtpUsername,
+      from_address: fromAddress,
+      to_addresses: toAddresses,
+    };
+    // Only send password if user actually typed it (don't echo masked placeholder)
+    if (passwordTouched && smtpPassword) {
+      cfg.smtp_password = smtpPassword;
+    }
     try {
       await api.upsertNotificationConfig({
         type: 'email',
         enabled: emailEnabled,
-        config: {
-          smtp_host: smtpHost,
-          smtp_port: smtpPort,
-          smtp_username: smtpUsername,
-          smtp_password: smtpPassword,
-          from_address: fromAddress,
-          to_addresses: toAddresses,
-        }
+        config: cfg,
       });
+      passwordTouched = false;
       showSaved();
     } catch (e) {
       console.error('Failed to save email config', e);
@@ -148,7 +155,7 @@
             </div>
             <div class="form-row">
               <label for="smtp-pass">{$t('notificationSettings.smtpPass')}</label>
-              <input id="smtp-pass" type="password" bind:value={smtpPassword} placeholder={$t('notificationSettings.smtpPassPlaceholder')} />
+              <input id="smtp-pass" type="password" bind:value={smtpPassword} on:input={() => passwordTouched = true} placeholder={$t('notificationSettings.smtpPassPlaceholder')} />
             </div>
             <div class="form-row">
               <label for="from-addr">{$t('notificationSettings.fromAddr')}</label>

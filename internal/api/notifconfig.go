@@ -10,6 +10,29 @@ import (
 	"github.com/rogerrlee/tasks-watcher/internal/models"
 )
 
+// maskSensitiveFields replaces sensitive config values (passwords, secrets)
+// with a placeholder before sending to the client.
+func maskSensitiveFields(c models.NotificationConfig) models.NotificationConfig {
+	if c.Config == nil {
+		return c
+	}
+	cfg := make(map[string]interface{}, len(c.Config))
+	for k, v := range c.Config {
+		switch k {
+		case "smtp_password", "password", "secret", "api_key":
+			if v != "" {
+				cfg[k] = "******"
+			} else {
+				cfg[k] = ""
+			}
+		default:
+			cfg[k] = v
+		}
+	}
+	c.Config = cfg
+	return c
+}
+
 type NotificationConfigHandler struct {
 	db *db.DB
 }
@@ -34,7 +57,11 @@ func (h *NotificationConfigHandler) List(w http.ResponseWriter, r *http.Request)
 	if configs == nil {
 		configs = []models.NotificationConfig{}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"configs": configs})
+	out := make([]models.NotificationConfig, len(configs))
+	for i := range configs {
+		out[i] = maskSensitiveFields(configs[i])
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"configs": out})
 }
 
 func (h *NotificationConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +76,7 @@ func (h *NotificationConfigHandler) Get(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"config not found"}`, http.StatusNotFound)
 		return
 	}
-	json.NewEncoder(w).Encode(c)
+	json.NewEncoder(w).Encode(maskSensitiveFields(*c))
 }
 
 func (h *NotificationConfigHandler) Upsert(w http.ResponseWriter, r *http.Request) {
