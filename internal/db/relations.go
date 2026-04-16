@@ -563,7 +563,7 @@ func isTerminalStatus(s models.TaskStatus) bool {
 
 // scanTasks is a helper to scan task rows into a slice.
 func scanTasks(rows *sql.Rows) ([]models.Task, error) {
-	var tasks []models.Task
+	tasks := []models.Task{}
 	for rows.Next() {
 		var t models.Task
 		var completedAt, heartbeatAt sql.NullInt64

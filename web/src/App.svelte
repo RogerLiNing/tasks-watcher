@@ -96,6 +96,10 @@
         case 'task.cancelled':
         case 'task.updated':
           updateTaskInStore(event.payload);
+          // Refresh selectedTask so TaskModal edit fields stay current
+          if (selectedTask && selectedTask.id === event.payload.id) {
+            selectedTask = event.payload;
+          }
           break;
         case 'task.deleted':
           removeTaskFromStore(event.payload.id);
@@ -105,6 +109,7 @@
         case 'task.subtask.added':
         case 'task.subtask.removed':
         case 'task.subtask.reordered':
+          // Reload selected task to refresh dependency/subtask panels
           if (selectedTask && event.payload && (event.payload.task_id || event.payload.parent_id)) {
             const taskId = event.payload.task_id || event.payload.parent_id;
             if (selectedTask.id === taskId) {

@@ -15,9 +15,10 @@
   let addError = '';
   let newBlockerId = '';
 
-  // All tasks available to add as blocker (exclude self and already-blocked)
+  // All tasks available to add as blocker (exclude self, already-blocked, and those missing status)
   $: availableBlockers = $tasks.filter(t =>
     t.id !== task.id &&
+    t.status != null &&
     t.status !== task.status &&
     !blockers.find(b => b.id === t.id)
   );

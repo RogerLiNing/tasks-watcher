@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -120,7 +121,11 @@ func (db *DB) DenySession(tokenHash string) error {
 // IsSessionDenied checks if a token hash is in the denylist.
 func (db *DB) IsSessionDenied(tokenHash string) bool {
 	var exists int
-	db.conn.QueryRow(`SELECT 1 FROM session_denylist WHERE token_hash = ?`, tokenHash).Scan(&exists)
+	err := db.conn.QueryRow(`SELECT 1 FROM session_denylist WHERE token_hash = ?`, tokenHash).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("IsSessionDenied: query failed (%s): %v", tokenHash[:8], err)
+		return true // fail-closed: deny on DB error
+	}
 	return exists == 1
 }
 
