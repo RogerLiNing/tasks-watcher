@@ -150,7 +150,10 @@ func taskDepCheckCmd() *cobra.Command {
 			if err := json.Unmarshal(resp, &result); err != nil {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
-			canStart, _ := result["can_start"].(bool)
+			canStart := false
+			if b, ok := result["can_start"].(bool); ok {
+				canStart = b
+			}
 			if canStart {
 				fmt.Printf("✓ Task %s can start\n", taskID)
 			} else {

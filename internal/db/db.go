@@ -565,7 +565,10 @@ func (db *DB) GetNotificationConfig(notifType string) (*models.NotificationConfi
 	}
 	c.Enabled = enabled == 1
 	if configJSON != "" {
-		json.Unmarshal([]byte(configJSON), &c.Config)
+		if err := json.Unmarshal([]byte(configJSON), &c.Config); err != nil {
+			// Config JSON was serialized by this application; parse failure is
+			// unlikely. Leave c.Config empty and continue.
+		}
 	}
 	return c, nil
 }
@@ -587,7 +590,10 @@ func (db *DB) ListNotificationConfigs() ([]models.NotificationConfig, error) {
 		}
 		c.Enabled = enabled == 1
 		if configJSON != "" {
-			json.Unmarshal([]byte(configJSON), &c.Config)
+			if err := json.Unmarshal([]byte(configJSON), &c.Config); err != nil {
+				// Config JSON was serialized by this application; parse failure is
+				// unlikely. Leave c.Config empty and continue.
+			}
 		}
 		configs = append(configs, c)
 	}
