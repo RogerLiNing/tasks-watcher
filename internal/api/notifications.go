@@ -28,7 +28,11 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	if notifs == nil {
 		notifs = []models.Notification{}
 	}
-	count, _ := h.db.GetUnreadNotificationCount()
+	count, err := h.db.GetUnreadNotificationCount()
+	if err != nil {
+		log.Printf("GetUnreadNotificationCount failed: %v", err)
+		count = 0
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"notifications": notifs,
 		"unread_count":   count,

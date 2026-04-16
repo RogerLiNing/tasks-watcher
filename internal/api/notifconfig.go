@@ -107,7 +107,12 @@ func (h *NotificationConfigHandler) Upsert(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	updated, _ := h.db.GetNotificationConfig(req.Type)
+	updated, err := h.db.GetNotificationConfig(req.Type)
+	if err != nil {
+		log.Printf("GetNotificationConfig(%s) failed after upsert: %v", req.Type, err)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
 	json.NewEncoder(w).Encode(updated)
 }
 

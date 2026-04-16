@@ -1,7 +1,8 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { t } from '../lib/i18n/index.js';
   import { api, currentUser } from '../lib/api.js';
+  import { onSSEEvent } from '../lib/sse.js';
 
   export let task;
 
@@ -24,12 +25,35 @@
     loadComments();
   });
 
-  // Reload when task prop changes (e.g., after SSE real-time update)
+  // Reload when task prop changes (e.g., after navigation)
   let prevTaskId = '';
   $: if (task?.id && task.id !== prevTaskId) {
     prevTaskId = task.id;
     loadComments();
   }
+
+  // Subscribe to SSE comment events for real-time updates
+  const unsubSSE = onSSEEvent((event) => {
+    const payload = event.payload || {};
+    if (payload.task_id !== task?.id) return;
+    switch (event.type) {
+      case 'task.comment.added':
+        if (!comments.find(c => c.id === payload.comment?.id)) {
+          comments = [...comments, payload.comment];
+        }
+        break;
+      case 'task.comment.updated':
+        comments = comments.map(c => c.id === payload.comment?.id ? payload.comment : c);
+        break;
+      case 'task.comment.deleted':
+        comments = comments.filter(c => c.id !== payload.comment_id);
+        break;
+    }
+  });
+
+  onDestroy(() => {
+    unsubSSE();
+  });
 
   async function loadComments() {
     loading = true;

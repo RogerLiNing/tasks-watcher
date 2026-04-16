@@ -377,8 +377,10 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 			return
 		}
 		// Re-fetch parent so broadcast sends the updated status, not stale data
-		updatedParent, _ := h.db.GetTask(parentID)
-		if updatedParent != nil {
+		updatedParent, err := h.db.GetTask(parentID)
+		if err != nil {
+			log.Printf("propagateToParent: GetTask(%s) failed: %v", parentID, err)
+		} else if updatedParent != nil {
 			BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
 				"parent":       updatedParent,
 				"child_id":     child.ID,
@@ -404,8 +406,10 @@ func (h *TaskHandler) propagateToParent(child *models.Task) {
 	}
 
 	// Broadcast parent status change — re-fetch so we send the updated status
-	updatedParent, _ := h.db.GetTask(parentID)
-	if updatedParent != nil {
+	updatedParent, err := h.db.GetTask(parentID)
+	if err != nil {
+		log.Printf("propagateToParent: GetTask(%s) failed: %v", parentID, err)
+	} else if updatedParent != nil {
 		BroadcastTaskEvent(h.sse, models.EventSubtaskStatusChanged, map[string]interface{}{
 			"parent":       updatedParent,
 			"child_id":     child.ID,

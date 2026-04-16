@@ -59,7 +59,12 @@ func (h *ColumnHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Color == "" {
 		req.Color = "#86868b"
 	}
-	cols, _ := h.db.ListColumns()
+	cols, err := h.db.ListColumns()
+	if err != nil {
+		log.Printf("ListColumns failed: %v", err)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
 	position := req.Position
 	if position == 0 {
 		position = len(cols)
